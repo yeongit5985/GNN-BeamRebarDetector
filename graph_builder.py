@@ -63,6 +63,34 @@ BEAM_RADIUS    = 150   # beam membership: title-like text <-> rebar-like text pa
 VIEW_GAP       = 1.0   # line work closer than this = same view (elevation / section) for the scale check
 
 
+USE_RULE_HINT = True    # give the model the rule-based detector's same-bars links as a hint (needs beam_detector.py)
+
+
+def _inside(c, bb, pad=0.0):
+    return bb[0] - pad <= c[0] <= bb[2] + pad and bb[1] - pad <= c[1] <= bb[3] + pad
+
+
+def rule_same_bars(pdf_path, page_no):
+    """The detector's same-bars links on this page, as (label box, label box) pairs in PDF points."""
+    if not USE_RULE_HINT:
+        return []
+    try:
+        import beam_detector as bd
+        det = bd.detect(str(pdf_path), page_no, verbose=False)
+    except Exception as ex:                  # no detector here, or it failed on this page: no hint
+        builtins.print(f"rule hint skipped ({type(ex).__name__}: {ex})")
+        return []
+    D = det.get("dets", []) if isinstance(det, dict) else det
+    by_id = {d.get("id"): d for d in D}
+    out = []
+    for d in D:
+        for key in ("same_as", "repeat_of"):
+            e = by_id.get(d.get(key))
+            if e is not None and d.get("bbox") is not None and e.get("bbox") is not None:
+                out.append((tuple(d["bbox"]), tuple(e["bbox"])))
+    return out
+
+
 def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbose=False):
     """One annotated Label Studio task + its PDF page -> dict(arrays=..., meta=..., stats=...).
     arrays/meta are what the notebook saves as .npz/.json; page_no is 0-based."""
@@ -711,6 +739,102 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
         link_cand |= {(a, j) for a in link_like for j in in_sec}
     cand |= sec_cand | link_cand
 
+    # ---- section <-> elevation, from the drawing alone (no annotation needed, so it works on new pages):
+    # a section's labels name the bars that cross its cut in the elevation (between the two cut marks).
+    #  - which section each rebar-like text belongs to (the nearest SECTION title below it, close enough)
+    #  - the cut: the cut marks' x, between their y; the bar lines crossing it; the labels on those bars
+    #    (a few touch / near steps: label - leader - arrowhead - bar)
+    #  - 'section' edges: title <-> its labels, title <-> its cut marks, title <-> the bars at its cut
+    #  - candidate pairs: a section label and an elevation label of the same bar size (2T10 / T10-250
+    #    SIDE BAR), not only the same text
+    #  - pair hint: the elevation label is on a bar at the cut of the section label's section
+    RE_GD = re.compile(r"([RTHYØ∅])\s*(\d{1,2})", re.I)
+    def gd(i):
+        m_ = RE_GD.search(nodes[i]["text"]) if nodes[i]["kind"] == "text" else None
+        return (m_.group(1).upper(), int(m_.group(2))) if m_ else None
+    rebar_set = {int(i) for i in text_ids if RE_REBAR_LIKE.match(nodes[i]["text"])}
+    sec_label_of = {}                                # rebar-like text -> its section title's first node
+    titles = list(sec_title.items())
+    for i in rebar_set:
+        cx_, cy_ = nodes[i]["c"]; best = None
+        for t0, (ids, ts) in titles:
+            tb = nodes[ts[-1]]["bbox"]; tcx = (nodes[ts[0]]["c"][0] + nodes[ts[-1]]["c"][0]) / 2
+            if abs(cx_ - tcx) <= 30 * UNIT and tb[1] - 45 * UNIT <= cy_ <= tb[1]:
+                dd = math.hypot(cx_ - tcx, cy_ - tb[1])
+                if best is None or dd < best[0]:
+                    best = (dd, t0)
+        if best:
+            sec_label_of[i] = best[1]
+    seg_cache = {}
+    def crosses(j, x, ylo, yhi):                     # a (mostly horizontal) line node crossing x between ylo and yhi
+        if j not in seg_cache:
+            seg_cache[j] = np.asarray(nodes[j]["segs"], float).reshape(-1, 2, 2)
+        for (ax, ay), (bx, by) in seg_cache[j]:
+            if abs(bx - ax) < 0.5 * UNIT or abs(by - ay) > 0.6 * abs(bx - ax):
+                continue
+            if min(ax, bx) - 0.3 * UNIT <= x <= max(ax, bx) + 0.3 * UNIT:
+                y_ = ay + (by - ay) * (x - ax) / (bx - ax)
+                if ylo <= y_ <= yhi:
+                    return True
+        return False
+    line_ids = [int(j) for j in np.where(is_line)[0]]
+    at_cut = defaultdict(set)                        # title first node -> elevation labels on bars at its cut
+    sec_edges = set()
+    for t0, (ids, ts) in titles:
+        ms = [a for a in mark_like if sec_id_of(nodes[a]["text"]) in ids]
+        for a in ms:
+            sec_edges.add((t0, a))
+        if not ms:
+            continue
+        cut_x = float(np.mean([nodes[a]["bbox"][0] for a in ms])) - 0.3 * UNIT
+        ylo, yhi = min(nodes[a]["bbox"][1] for a in ms), max(nodes[a]["bbox"][3] for a in ms)
+        hit = [j for j in line_ids if nodes[j]["bbox"][0] - UNIT <= cut_x <= nodes[j]["bbox"][2] + UNIT
+               and nodes[j]["bbox"][3] >= ylo - 2 * UNIT and nodes[j]["bbox"][1] <= yhi + 10 * UNIT
+               and crosses(j, cut_x, ylo - 2 * UNIT, yhi + 10 * UNIT)]     # (+ below: link zone lines)
+        for j in hit:
+            sec_edges.add((t0, j))
+        seen, frontier = set(hit), set(hit)
+        for _ in range(3):
+            frontier = {k for f in frontier for k in adj[f]} - seen
+            seen |= frontier
+        at_cut[t0] = {k for k in seen if k in rebar_set and k not in sec_label_of}
+    for i, t0 in sec_label_of.items():
+        sec_edges.add((t0, i))
+    for a, b in sec_edges:
+        add_edge(int(a), int(b), 3, 0.0)
+    size_cand = set()                                # same bar size, section label <-> elevation label
+    for i, t0 in sec_label_of.items():
+        g_ = gd(i)
+        if not g_:
+            continue
+        for k in rebar_set:
+            if k not in sec_label_of and gd(k) == g_:
+                size_cand.add((min(i, k), max(i, k)))
+    same_cand |= size_cand
+    cand |= size_cand
+    # pair hint: the rule-based detector's own same-bars links (beam_detector.py: section label -> the bar at
+    # the cut, a repeat -> the counted copy). The detector reads the page itself, so the hint is there for new
+    # pages too; the model learns when to trust it. No detector (or it fails): no hint.
+    hint = {}
+    for ba, bb_ in rule_same_bars(pdf_path, page_no):
+        na = [i for i in rebar_set if _inside(nodes[i]["c"], ba, 0.3 * UNIT)]
+        nb = [k for k in rebar_set if _inside(nodes[k]["c"], bb_, 0.3 * UNIT)]
+        for i in na:
+            for k in nb:
+                if i != k:
+                    hint[(min(i, k), max(i, k))] = 1.0
+                    if (min(i, k), max(i, k)) not in same_cand:      # the rule links texts the candidates missed
+                        same_cand.add((min(i, k), max(i, k))); cand.add((min(i, k), max(i, k)))
+    print(f"sections: {len(titles)} titles, {len(sec_label_of)} section labels, "
+          f"{sum(len(v) for v in at_cut.values())} labels at cuts, {len(size_cand)} same-size pairs, {len(hint)} hinted")
+
+    EDGE_TYPES = ["touch", "near", "text_knn", "section"]
+    keys = list(E)
+    edge_index = np.array(keys, np.int64).T.reshape(2, -1)
+    edge_type = np.array([E[k][0] for k in keys], np.int64)
+    edge_attr = np.clip(np.column_stack([(C[edge_index[1]] - C[edge_index[0]]) / UNIT,
+                                         [E[k][1] / UNIT for k in keys]]), -50, 50).astype(np.float32)
+
     ent_nodes = defaultdict(list)
     for i, e in enumerate(node_ent):
         if e is not None:
@@ -730,6 +854,7 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
     pairs = sorted(cand)
     pair_index = np.array(pairs, np.int64).T.reshape(2, -1)
     pair_label = np.array([p in pos for p in pairs], np.int64)
+    pair_hint = np.array([hint.get(p, 0.0) for p in pairs], np.float32)   # the elevation label is at the section's cut
     pair_kind = np.array([5 if (i, j) in link_cand else 0 if is_line[j] else 4 if (i, j) in sec_cand else 2 if (i, j) in beam_cand
                           else 3 if (i, j) in same_cand else 1 for i, j in pairs], np.int64)
     PAIR_KINDS = ["text-line", "text-text (near)", "group membership (beam / section)", "same element (repeat / section label)",
@@ -836,6 +961,7 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
 
     arrays = dict(x=X, y=node_cls, edge_index=edge_index, edge_type=edge_type, edge_attr=edge_attr,
                   pair_index=pair_index, pair_label=pair_label, pair_kind=pair_kind, pair_kinds=np.array(PAIR_KINDS),
+                  pair_hint=pair_hint,
                   unit=UNIT, page_wh=np.array([PAGE_W, PAGE_H]),
                   feature_names=np.array(FEAT), class_names=np.array(CLASSES), edge_types=np.array(EDGE_TYPES))
 
