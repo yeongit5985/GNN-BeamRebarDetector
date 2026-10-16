@@ -781,11 +781,16 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
     at_cut = defaultdict(set)                        # title first node -> elevation labels on bars at its cut
     sec_edges = set()
     for t0, (ids, ts) in titles:
-        ms = [a for a in mark_like if sec_id_of(nodes[a]["text"]) in ids]
+        ms = [a for a in mark_like if sec_id_of(nodes[a]["text"]) in ids and a not in ts]
+        # the cut marks are a pair above / below the beam at the same x; a lone 'B' (grid bubble, a title
+        # letter) is not one
+        pairs_ = [(a, b) for a in ms for b in ms if a < b and abs(nodes[a]["c"][0] - nodes[b]["c"][0]) <= 1.5 * UNIT
+                  and 3 * UNIT <= abs(nodes[a]["c"][1] - nodes[b]["c"][1]) <= 60 * UNIT]
+        if not pairs_:
+            continue
+        ms = list(min(pairs_, key=lambda p: abs(nodes[p[0]]["c"][1] - nodes[p[1]]["c"][1])))
         for a in ms:
             sec_edges.add((t0, a))
-        if not ms:
-            continue
         cut_x = float(np.mean([nodes[a]["bbox"][0] for a in ms])) - 0.3 * UNIT
         ylo, yhi = min(nodes[a]["bbox"][1] for a in ms), max(nodes[a]["bbox"][3] for a in ms)
         hit = [j for j in line_ids if nodes[j]["bbox"][0] - UNIT <= cut_x <= nodes[j]["bbox"][2] + UNIT
