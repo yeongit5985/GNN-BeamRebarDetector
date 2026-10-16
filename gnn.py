@@ -228,7 +228,7 @@ def graph_from_arrays(A, meta, name="page"):
     text_idx = np.where(is_text > 0)[0]
     chars, shapes = _char_ids([meta["nodes"][k].get("text", "") for k in text_idx])
     return dict(
-        name=name, meta=meta,
+        name=name, meta=meta, has_hint="pair_hint" in getattr(A, "files", A),
         feature_names=feat, class_names=[str(c) for c in A["class_names"]], pair_kinds=kinds,
         edge_types=[str(t) for t in A["edge_types"]],
         x=torch.from_numpy(x), y=torch.from_numpy(A["y"].astype(np.int64)),
@@ -452,11 +452,15 @@ class TextEncoder(nn.Module):
 
 class BeamGNN(nn.Module):
     def __init__(self, n_feat, n_classes, n_edge_types, edge_dim, pair_dim, hidden=64, layers=3, dropout=0.1,
-                 read_text=True, pattern_cols=()):
+                 read_text=True, pattern_cols=(), hint=False):
         super().__init__()
         self.config = dict(n_feat=n_feat, n_classes=n_classes, n_edge_types=n_edge_types, edge_dim=edge_dim,
                            pair_dim=pair_dim, hidden=hidden, layers=layers, dropout=dropout,
-                           read_text=read_text, pattern_cols=list(pattern_cols))
+                           read_text=read_text, pattern_cols=list(pattern_cols), hint=hint)
+        # the rule's same-bars hint (last pair feature) also goes straight to the pair score, with its own
+        # weight: inside the pair head it is 1 input of ~200 and, with few true pairs, the network learned
+        # the label texts instead. Starts trusting the hint; training turns the weight down if it misleads.
+        self.hint_w = nn.Parameter(torch.tensor(4.0)) if hint else None
         keep = torch.ones(n_feat)
         keep[list(pattern_cols)] = 0                 # hand-made pattern features switched off
         self.register_buffer("keep", keep)
@@ -476,7 +480,10 @@ class BeamGNN(nn.Module):
             h = self.drop(conv(h, g["edge_index"], g["edge_type"], g["edge_attr"]))
         i, j = g["pair_index"]
         pair_in = torch.cat([h[i], h[j], h[i] * h[j], g["pair_x"]], 1)
-        return self.node_head(h), self.pair_head(pair_in).squeeze(1)
+        pair = self.pair_head(pair_in).squeeze(1)
+        if self.hint_w is not None:
+            pair = pair + self.hint_w * g["pair_x"][:, -1]
+        return self.node_head(h), pair
 
 
 def new_model(example, hidden=64, layers=3, dropout=0.1, read_text=True, use_patterns=False):
@@ -484,7 +491,8 @@ def new_model(example, hidden=64, layers=3, dropout=0.1, read_text=True, use_pat
     hand-made text patterns ('looks like 6T20'); off by default, since a consultant's own style breaks them."""
     cols = [] if use_patterns else [example["feature_names"].index(f) for f in PATTERN_FEATURES if f in example["feature_names"]]
     return BeamGNN(example["x"].shape[1], len(example["class_names"]), len(example["edge_types"]),
-                   example["edge_attr"].shape[1], example["pair_x"].shape[1], hidden, layers, dropout, read_text, cols)
+                   example["edge_attr"].shape[1], example["pair_x"].shape[1], hidden, layers, dropout, read_text, cols,
+                   hint=bool(example.get("has_hint")))
 
 
 # ------------------------------------------------------------------------------------------- training
