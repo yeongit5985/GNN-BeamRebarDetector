@@ -1,0 +1,6 @@
+numpy
+scipy
+torch
+matplotlib
+pypdfium2
+rapidocr_onnxruntime
