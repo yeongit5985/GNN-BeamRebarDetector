@@ -9,8 +9,11 @@ Trains a graph neural network that reads beam detail drawings (PDF): what each l
 - `graph_builder.py` - turns a drawing page + its checked annotation (JSON) into a graph.
 - `gnn.py` - the model, training, scores, save/load.
 - `pdf_backend.py` - reads the PDFs (pypdfium2).
+- `beam_detector.py` - the rule-based detector. graph_builder runs it on each page and gives its same-bars links
+  (section label -> the bar at the cut, repeat -> counted copy) to the model as a hint (`pair_hint`).
 
 Copied from `beam-tools` on 16 Oct 2026 (the annotation and review tools stay there).
+Graphs built before 16 Oct (no `section` edges / `pair_hint`) need rebuilding: run step 4 of the notebook again.
 
 ## Data (Google Drive, not in this repo)
 `My Drive/Deep Learning/GNN-BeamRebarDetector/`

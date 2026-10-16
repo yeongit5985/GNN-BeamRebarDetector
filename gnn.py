@@ -236,8 +236,12 @@ def graph_from_arrays(A, meta, name="page"):
         edge_type=torch.from_numpy(A["edge_type"].astype(np.int64)), edge_attr=torch.from_numpy(ea),
         pair_index=torch.from_numpy(pi), pair_label=torch.from_numpy(A["pair_label"].astype(np.float32)),
         pair_kind=torch.from_numpy(A["pair_kind"].astype(np.int64)),
-        pair_x=torch.from_numpy(_pair_features(meta, pi, A["pair_kind"], len(kinds), unit, is_text, is_mark,
-                                               A["edge_index"], A["edge_type"], x[:, feat.index("l_rel_width")])),
+        pair_x=torch.from_numpy(np.column_stack([
+            _pair_features(meta, pi, A["pair_kind"], len(kinds), unit, is_text, is_mark,
+                           A["edge_index"], A["edge_type"], x[:, feat.index("l_rel_width")]),
+            # the rule-based detector's same-bars link (graph_builder: pair_hint); 0 in graphs built before it
+            A["pair_hint"].astype(np.float32) if "pair_hint" in getattr(A, "files", A) else np.zeros(pi.shape[1], np.float32),
+        ]).astype(np.float32)),
         text_idx=torch.from_numpy(text_idx.astype(np.int64)), chars=torch.from_numpy(chars), shapes=torch.from_numpy(shapes),
     )
 
