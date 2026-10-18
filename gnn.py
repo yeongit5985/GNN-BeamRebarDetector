@@ -231,7 +231,7 @@ def graph_from_arrays(A, meta, name="page"):
         name=name, meta=meta, has_hint="pair_hint" in getattr(A, "files", A),
         feature_names=feat, class_names=[str(c) for c in A["class_names"]], pair_kinds=kinds,
         edge_types=[str(t) for t in A["edge_types"]],
-        x=torch.from_numpy(x), y=torch.from_numpy(A["y"].astype(np.int64)),
+        x=torch.from_numpy(x), y=torch.from_numpy(_ignore_unpaired_dims(A, meta, kinds)),
         edge_index=torch.from_numpy(A["edge_index"].astype(np.int64)),
         edge_type=torch.from_numpy(A["edge_type"].astype(np.int64)), edge_attr=torch.from_numpy(ea),
         pair_index=torch.from_numpy(pi), pair_label=torch.from_numpy(A["pair_label"].astype(np.float32)),
@@ -246,6 +246,31 @@ def graph_from_arrays(A, meta, name="page"):
     )
 
 
+IGNORE = -1      # node label left out of the loss and the scores
+
+
+def _ignore_unpaired_dims(A, meta, kinds):
+    """Node labels, with every Dim that has no text-line link to a DimLine set to IGNORE: the Dim - DimLine
+    pair is kept only to read the drawing scale (scanned drawings later), so a Dim without its line teaches
+    nothing (YS, 18 Oct). Checked per region: one linked piece keeps the whole Dim."""
+    y = A["y"].astype(np.int64)
+    classes = [str(c) for c in A["class_names"]]
+    if "Dim" not in classes or "DimLine" not in classes or "text-line" not in kinds:
+        return y
+    dim, dline = classes.index("Dim"), classes.index("DimLine")
+    ent = [n.get("entity") for n in meta["nodes"]]
+    pi, lab, pk = A["pair_index"], A["pair_label"] > 0, A["pair_kind"] == kinds.index("text-line")
+    paired = set()
+    for a, b in zip(pi[0][lab & pk], pi[1][lab & pk]):
+        for u, v in ((a, b), (b, a)):
+            if y[u] == dim and y[v] == dline:
+                paired.add(ent[u] if ent[u] is not None else f"n{u}")
+    for i in np.where(y == dim)[0]:
+        if (ent[i] if ent[i] is not None else f"n{i}") not in paired:
+            y[i] = IGNORE
+    return y
+
+
 def load_graphs(folder, verbose=True):
     """Every graph (.npz with its .json) in a folder."""
     out = []
@@ -257,7 +282,7 @@ def load_graphs(folder, verbose=True):
             raise ValueError(f"{p.name} was built with other node features than {out[0]['name']}: rebuild it")
         out.append(g)
         if verbose:
-            print(f"{g['name']}: {len(g['y'])} nodes ({int((g['y'] > 0).sum())} labelled), {g['edge_index'].shape[1]} edges, "
+            print(f"{g['name']}: {len(g['y'])} nodes ({int((g['y'] > 0).sum())} labelled, {int((g['y'] == IGNORE).sum())} ignored), {g['edge_index'].shape[1]} edges, "
                   f"{len(g['pair_label'])} candidate pairs, {int(g['pair_label'].sum())} true")
     return out
 
@@ -502,7 +527,7 @@ def weights(graphs):
     cnt = torch.zeros(n_cls)
     pos, tot = torch.zeros(n_kinds), torch.zeros(n_kinds)
     for g in graphs:
-        cnt += torch.bincount(g["y"], minlength=n_cls).float()
+        cnt += torch.bincount(g["y"][g["y"] >= 0], minlength=n_cls).float()
         pos += torch.bincount(g["pair_kind"], weights=g["pair_label"], minlength=n_kinds)
         tot += torch.bincount(g["pair_kind"], minlength=n_kinds).float()
     cw = (cnt.sum() / (n_cls * cnt.clamp(min=1))).sqrt().clamp(0.2, 10.0)
@@ -513,7 +538,7 @@ def weights(graphs):
 
 def loss_fn(model, g, cw, pw):
     node_logits, pair_logits = model(g)
-    node_loss = F.cross_entropy(node_logits, g["y"], weight=cw)
+    node_loss = F.cross_entropy(node_logits, g["y"], weight=cw, ignore_index=IGNORE)
     w = torch.where(g["pair_label"] > 0, pw[g["pair_kind"]], torch.ones_like(g["pair_label"]))
     bce = F.binary_cross_entropy_with_logits(pair_logits, g["pair_label"], weight=w, reduction="none")
     kinds = torch.unique(g["pair_kind"])
@@ -567,6 +592,7 @@ def evaluate(model, graphs, thresholds=None):
     for g in graphs:
         nprob, pprob = predict(model, g)
         yp, y = nprob.argmax(1).numpy(), g["y"].numpy()
+        yp, y = yp[y != IGNORE], y[y != IGNORE]           # ignored labels (Dim without its DimLine) not scored
         correct += int((yp == y).sum()); total += len(y)
         for c in range(1, n_cls):
             ct[c] += [((yp == c) & (y == c)).sum(), ((yp == c) & (y != c)).sum(), ((yp != c) & (y == c)).sum()]
