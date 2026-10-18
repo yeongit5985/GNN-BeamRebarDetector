@@ -1636,6 +1636,17 @@ def detect(pdf_path, page_no=0, verbose=True, square_bends=True, force_ocr=False
             q = np.array(d["dimline"], float).reshape(-1, 2); return float(q[:, 0].mean())
         return float(ctr(d)[0])
 
+    def clip_len(line, lo, hi):         # length (pt) of a bar line between x = lo and x = hi
+        tot = 0.0
+        for x0, y0, x1, y1 in np.vstack([np.array(s_, float).reshape(-1, 4) for s_ in line]):
+            L = math.hypot(x1 - x0, y1 - y0)
+            if abs(x1 - x0) < 1e-6:
+                tot += L if lo <= x0 <= hi else 0.0
+                continue
+            t0, t1 = sorted(((lo - x0) / (x1 - x0), (hi - x0) / (x1 - x0)))
+            tot += L * max(0.0, min(1.0, t1) - max(0.0, t0))
+        return tot
+
     def geo_x(d):                       # x-extent of an element's geometry (text, line, dimension line)
         xs = [d["bbox"][0], d["bbox"][2]]
         if d.get("line"):
@@ -1694,6 +1705,7 @@ def detect(pdf_path, page_no=0, verbose=True, square_bends=True, force_ocr=False
                 CONT.append(found)
                 break
 
+    CONT_INFO = []
     for bu, bl, o, pairs, shared, A, B, tu, tl in CONT:
         ox = float(o[0])
         grid_x = sorted({round(float(b["c"][0]), 1) for b in rows[bu["row"]]} |
@@ -1714,6 +1726,11 @@ def detect(pdf_path, page_no=0, verbose=True, square_bends=True, force_ocr=False
             return side, (z[2]["text"] if z else None)
 
         gl = bu["label"]
+        yu_, yl_ = float(bu["c"][1]), float(bl["c"][1])
+        CONT_INFO.append(dict(grid=gl, ox=ox, oy=float(o[1]), split_upper=split, split_lower=split - ox,
+                              upper_y=[yu_ - 2 * UNIT, yl_ - 2 * UNIT], lower_y=[yl_ - 2 * UNIT, yl_ + (yl_ - yu_)],
+                              upper_end=max(float(b["c"][0]) for b in rows[bu["row"]]) + 5 * UNIT,
+                              lower_start=min(float(b["c"][0]) for b in rows[bl["row"]]) - 5 * UNIT))
         n_rep = 0
         for a, b in pairs:                                   # a: upper copy, b: lower copy
             la, lb = a.get("line_len") or 0.0, b.get("line_len") or 0.0
@@ -1725,12 +1742,29 @@ def detect(pdf_path, page_no=0, verbose=True, square_bends=True, force_ocr=False
                 side, _ = owner(mid_x(a))
                 keep, why = (a, "in its span") if side == "upper" else (b, "in its span")
             rep = b if keep is a else a
+            # the shared grid line this pair sits at, in each copy's own coordinates: each copy's bar line is
+            # drawn only on its own side of it (upper row: left of it, lower row: right); past it, it is the
+            # other row's bar drawn again (YS, 17 Oct)
+            a["grid_x"], b["grid_x"] = split, split - ox     # the grid where the upper row hands over (owner())
+            a["grid_side"], b["grid_side"] = "left", "right"
             xk = mid_x(keep) + (ox if keep is b else 0.0)
             _, beam = owner(xk)
             beam = beam or keep.get("beam")
             keep["beam"] = rep["beam"] = beam
             rep["repeat_of"] = keep["id"]
             keep.setdefault("repeats", []).append(rep["id"])
+            # takeoff length: each copy is the real bar only on its own side of the grid (upper: A, lower: D);
+            # the bar = A + D, counted once on the kept label (number of bars from it)
+            if a["cls"] == "RebarSize" and a.get("line") and b.get("line") and a.get("length_mm") and b.get("length_mm"):
+                pa, pb = clip_len(a["line"], -1e9, split), clip_len(b["line"], split - ox, 1e9)
+                sa, sb = a["length_mm"] / max(a["line_len"], 1e-6), b["length_mm"] / max(b["line_len"], 1e-6)
+                stub = (a.get("stub_len_pt", 0.0) * sa + b.get("stub_len_pt", 0.0) * sb) / 2
+                tot = (b["length_mm"] if pa < 1e-6 else a["length_mm"] if pb < 1e-6    # one copy all in the overlap
+                       else pa * sa + pb * sb - stub)
+                keep["length_drawn_mm"] = keep["length_mm"]
+                keep["length_mm"] = round(tot)
+                keep["length_note"] = (f"continued at grid {gl}: {round(pa * sa)} mm up to the grid (upper row) + "
+                                       f"{round(pb * sb)} mm from it (lower row) = {round(tot)} mm")
             where = "in the row below" if keep is b else "in the row above"
             rep["repeat_note"] = f"repeat (drawn twice where the beam continues, grid {gl}): counted {where} - not counted"
             keep["repeat_note"] = f"also drawn in the row {'above' if keep is b else 'below'} (grid {gl}): counted here ({why})"
@@ -2369,7 +2403,7 @@ def detect(pdf_path, page_no=0, verbose=True, square_bends=True, force_ocr=False
         log(f"{t['cls']}: {t['text']}  ({t['source']})")
 
     return dict(pdf=str(PDF_PATH), page=PAGE_NO, page_w=PAGE_W, page_h=PAGE_H, unit=UNIT,
-                sheet_scale=SHEET_SCALE / PT_MM, dets=dets)
+                sheet_scale=SHEET_SCALE / PT_MM, dets=dets, continued=CONT_INFO)
 
 
 def write_outputs(res, stem=None):

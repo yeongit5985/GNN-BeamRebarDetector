@@ -373,6 +373,7 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
     print("vector vertices in", "percent" if VECTOR_IN_PERCENT else "pixels")
 
     regions, unknown, laps, sheet, cancels = {}, set(), [], {}, {}
+    cut_pieces = []                                  # (labelled line id, points) of REPEAT overlap pieces
     for r in result:
         t, v = r.get("type"), r.get("value", {})
         if t not in ("rectanglelabels", "vectorlabels", "polygonlabels"):
@@ -399,6 +400,15 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
         cls = LABEL_MAP.get(raw)
         if cls is None:
             unknown.add(raw); continue
+        if str(((r.get("meta") or {}).get("text") or [""])[0]).startswith("REPEAT overlap"):
+            # continued rows: the piece of a bar line past the shared grid (the other row's bar drawn again) is cut
+            # off in the labels for the takeoff (A + D), but the PDF draws the bar as one line: in the graph the
+            # piece is joined back to the labelled piece it was cut from (no piece left: the line has no label)
+            src = (r.get("meta") or {}).get("cut_from")
+            if src and t == "vectorlabels":
+                W, H = r.get("original_width", IMG_W), r.get("original_height", IMG_H)
+                cut_pieces.append((src, px2pt(ls_vertices(v, W, H))))
+            continue
         if r.get("image_rotation"):
             print("WARNING: region on a rotated image:", r["id"])
         W, H = r.get("original_width", IMG_W), r.get("original_height", IMG_H)
@@ -540,18 +550,20 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
     L_tree, L_own = cKDTree(S_xy[L_sel]), S_own[L_sel]
     votes = defaultdict(lambda: defaultdict(float))     # node -> region -> voted length (pt)
     ann_dense, ann_owner = {}, {}
-    for rid, g in regions.items():
-        if g["shape"] != "line":
-            continue
-        pts = np.vstack([g["pts"], g["pts"][:1]]) if g["closed"] else g["pts"]
+    line_parts = [(rid, g["pts"], g["closed"]) for rid, g in regions.items() if g["shape"] == "line"]
+    line_parts += [(src, p, False) for src, p in cut_pieces if src in regions]
+    for rid, p, closed in line_parts:
+        pts = np.vstack([p, p[:1]]) if closed else p
         dense = densify(pts, STEP)
         d, k = L_tree.query(dense, distance_upper_bound=LINE_MATCH_TOL * UNIT)
         ok = np.isfinite(d)
         owners = np.full(len(dense), -1)
         owners[ok] = L_own[k[ok]]
-        ann_dense[rid], ann_owner[rid] = dense, owners
         for o in owners[ok]:
             votes[o][rid] += STEP
+        if rid in ann_dense:                         # a cut-off piece: one line with its labelled piece
+            dense, owners = np.vstack([ann_dense[rid], dense]), np.concatenate([ann_owner[rid], owners])
+        ann_dense[rid], ann_owner[rid] = dense, owners
 
     ann_len = {rid: (len(d_) - 1) * STEP for rid, d_ in ann_dense.items()}
     partial_len = {}          # LS vector covering only part of a PDF line (e.g. one link zone of a long line)
