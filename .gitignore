@@ -3,3 +3,14 @@ __pycache__/
 .ipynb_checkpoints/
 *.npz
 *.pt
+.env
+.env.*
+*.env
+config.json
+secrets.py
+*.pem
+*.key
+*.json
+*.html
+*.pdf
+*.png
