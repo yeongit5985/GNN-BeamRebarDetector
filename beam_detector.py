@@ -2062,6 +2062,66 @@ def detect(pdf_path, page_no=0, verbose=True, square_bends=True, force_ocr=False
                          f"off scale (1:{d['mm_per_pt'] / PT_MM:.1f})")
         elif d["cls"] == "RebarSize" and not d.get("line"):
             d["check"] = "no line (section dot / side bars)"
+
+    # bar drawn vs its dimensions: where a bar's run starts and ends at the extension lines of a dimension (or
+    # a chain of them, 1200 + 3000 + 1200), the drawn run should equal the dimensions; more than 5 % off is
+    # flagged with both numbers (YS, 18 Oct). A bar with no such dimension keeps its measured length.
+    DIM_TOL = 0.05
+    dim_rows = defaultdict(list)                        # dims along one line: (direction, offset) -> (start, end, value)
+    for d in dets:
+        if d["cls"] == "Dim" and d.get("dimline") and d.get("value"):
+            a, b = (np.array(p, float) for p in d["dimline"])
+            u = (b - a) / max(np.hypot(*(b - a)), 1e-9)
+            if u[0] < -1e-6 or (abs(u[0]) <= 1e-6 and u[1] < 0):
+                a, b, u = b, a, -u
+            horiz = abs(u[0]) >= abs(u[1])
+            ax, off = (0, 1) if horiz else (1, 0)
+            dim_rows[(horiz, round(a[off] / (0.5 * UNIT)))].append((float(a[ax]), float(b[ax]), float(d["value"]), d["id"]))
+    for row in dim_rows.values():
+        row.sort()
+    for d in dets:
+        if not (d["cls"] == "RebarSize" and d.get("line") and (d.get("label") or {}).get("kind") == "bar"
+                and d.get("length_mm") and not d.get("length_note") and "check" not in d):
+            continue
+        seg = np.concatenate([np.asarray(s, float).reshape(-1, 2, 2) for s in d["line"]])
+        run = seg[np.argmax(np.hypot(*(seg[:, 1] - seg[:, 0]).T))]          # the main straight run of the bar
+        horiz = abs(run[1, 0] - run[0, 0]) >= abs(run[1, 1] - run[0, 1])
+        ax = 0 if horiz else 1
+        lo, hi = sorted((float(run[0, ax]), float(run[1, ax])))
+        L = hi - lo
+        if L < 4 * UNIT:
+            continue
+        reach = 0.5 * UNIT                            # a bar end on the dimension's extension line (not a bar running on past it)
+        best = None
+        for (h, _), row in dim_rows.items():
+            if h != horiz:
+                continue
+            for i in range(len(row)):
+                if abs(row[i][0] - lo) > reach:
+                    continue
+                tot, parts = 0.0, []
+                for j in range(i, len(row)):
+                    if j > i and abs(row[j][0] - row[j - 1][1]) > 0.5 * UNIT:
+                        break                           # chain broken
+                    tot += row[j][2]; parts.append(row[j])
+                    err = abs(row[i][0] - lo) + abs(row[j][1] - hi)
+                    if abs(row[j][1] - hi) <= reach and (best is None or err < best[0]):
+                        best = (err, tot, [p[2] for p in parts])
+        if best is None:
+            d["dim_check"] = "no dimension: measured length used"
+            continue
+        sc = VIEW_SCALE.get(d["line_view"], SHEET_SCALE)
+        drawn = L * sc
+        _, dim_mm, parts = best
+        d["run_mm"], d["run_dim_mm"] = round(drawn), round(dim_mm)
+        txt = " + ".join(f"{v:.0f}" for v in parts)
+        if abs(drawn - dim_mm) > DIM_TOL * dim_mm:
+            d["dim_check"] = f"length mismatch: drawn {drawn:.0f} vs dimension {dim_mm:.0f} ({txt})"
+            d["check"] = d["dim_check"]
+        else:
+            d["dim_check"] = f"dimension ok ({txt})"
+    n_dc = Counter(str(d.get("dim_check", "")).split(":")[0].split(" (")[0] for d in dets if d.get("dim_check"))
+    log("bar vs dimensions:", dict(n_dc))
     sec_by_id = {sc["T"]["id"]: sc for sc in secs}
     RE_SZ = re.compile(r"(\d{2,4})\s*(?:\(\s*W\w*\s*\))?\s*[xX×]\s*(\d{2,4})(?:\s*/\s*(\d{2,4}))?")
     def beam_size(name):
@@ -2419,7 +2479,7 @@ def write_outputs(res, stem=None):
         w = csv.writer(f)
         w.writerow(["beam", "class", "text", "kind", "sets", "count", "grade", "dia", "spacing", "face",
                     "line_len_pt", "length_mm", "bends_squared", "zone_len_printed", "repeat_of",
-                    "links_per_set", "n_sets", "link_cut_mm", "cut_per_set_mm", "total_link_m", "check", "source", "x0", "y0", "x1", "y1"])
+                    "links_per_set", "n_sets", "link_cut_mm", "cut_per_set_mm", "total_link_m", "check", "dim_check", "source", "x0", "y0", "x1", "y1"])
         for d in sorted(dets, key=lambda d: (d.get("beam", ""), d["cls"], d["bbox"][1], d["bbox"][0])):
             lab = d.get("label") or {}
             ps = lab.get("parts", [{}])
@@ -2435,7 +2495,7 @@ def write_outputs(res, stem=None):
                         " + ".join("..".join(map(str, c)) for c in d["link_cut_mm"]) if d.get("link_cut_mm") else "",
                         "..".join(map(str, d["set_cut_mm"])) if d.get("set_cut_mm") else "",
                         "..".join(map(str, d["total_link_m"])) if d.get("total_link_m") else "",
-                        d.get("check", ""), d["source"], *[round(v, 1) for v in d["bbox"]]])
+                        d.get("check", ""), d.get("dim_check", ""), d["source"], *[round(v, 1) for v in d["bbox"]]])
     json.dump(dict(pdf=str(PDF_PATH), page=PAGE_NO, unit=UNIT, sheet_scale=res["sheet_scale"], detections=dets),
               open(f"{stem}_detections.json", "w"), default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
 
