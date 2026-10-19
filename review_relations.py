@@ -745,12 +745,12 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8"><title>Relations - _
 __THEME_HEAD__
 <style>
 :root{--bg:#f6f6f4;--panel:#fff;--ink:#222;--mute:#777;--line:#ddd;--ok:#1e8e3e;--bad:#d93025;--sel:#1a73e8}
-*{box-sizing:border-box}body{margin:0;font:13px/1.4 system-ui,Segoe UI,Arial,sans-serif;color:var(--ink);background:var(--bg);height:100vh;display:grid;grid-template-columns:330px 1fr;grid-template-rows:auto 1fr}
-header{grid-column:1/3;display:flex;gap:14px;align-items:center;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+*{box-sizing:border-box}body{margin:0;font:13px/1.4 system-ui,Segoe UI,Arial,sans-serif;color:var(--ink);background:var(--bg);height:100vh;overflow:hidden;display:grid;grid-template-columns:330px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+header{grid-column:1/3;display:flex;gap:6px 14px;align-items:center;min-width:0;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
 header b{font-size:14px}header .sp{flex:1}button{font:inherit;padding:4px 10px;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer}button:hover{border-color:#aaa}
 .tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 aside{overflow:auto;background:var(--panel);border-right:1px solid var(--line);grid-column:1;grid-row:2}main{grid-column:2;grid-row:2}
-body.nolist{grid-template-columns:0 1fr}body.nolist aside{visibility:hidden;border:0}
+body.nolist{grid-template-columns:0 minmax(0,1fr)}body.nolist aside{visibility:hidden;border:0}
 #listbtn{padding:1px 9px;font-size:16px;line-height:20px}#homebtn{margin-right:2px}#listbtn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .grp{display:flex;align-items:center;gap:6px;padding:8px 12px 5px;font-weight:600;color:var(--mute);text-transform:uppercase;font-size:11px;letter-spacing:.04em;position:sticky;top:0;background:var(--panel);cursor:pointer;user-select:none;z-index:1}
 .grp:hover{color:var(--ink)}.grp .car{width:10px;flex:none;font-size:10px}.grp .gn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -764,7 +764,7 @@ body.nolist{grid-template-columns:0 1fr}body.nolist aside{visibility:hidden;bord
 .it .t{flex:1;min-width:0}.it .t div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.it small{color:var(--mute)}
 .chip{width:10px;height:10px;border-radius:2px;flex:none}.pb{color:var(--bad);font-size:12px}
 #ileg{position:absolute;left:10px;top:10px;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;max-width:340px;box-shadow:0 2px 8px #0002}
-#ileg .ih{display:flex;align-items:center;gap:6px;font-weight:600;cursor:pointer;user-select:none}#ileg .ir{display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;user-select:none}
+#ileg .ih{display:flex;align-items:center;gap:6px;font-weight:600;cursor:move;user-select:none}#ileg .grip{color:var(--mute);font-size:13px}#ileg .ir{display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;user-select:none}
 #ileg .ir.off{opacity:.4;text-decoration:line-through}#ileg .sw{width:12px;height:12px;border-radius:3px;flex:none;border:2px solid}#ileg .ic{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mute)}
 #ileg.min .ir{display:none}.pb .dot{display:inline-block;width:8px;height:8px;border-radius:4px;margin-right:4px;vertical-align:middle}
 .st{width:18px;text-align:center;font-weight:700}.st.ok{color:var(--ok)}.st.bad{color:var(--bad)}
@@ -777,7 +777,7 @@ main{position:relative;overflow:hidden}svg{width:100%;height:100%;display:block;
 #info.min h3 .hx{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
 #banner{position:absolute;left:12px;top:12px;right:12px;background:#fff8e1;border:1px solid #f0d58a;border-radius:8px;padding:8px 12px;color:#6b5400}
 #alllinks.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-header{flex-wrap:nowrap;white-space:nowrap}header #sum{overflow:hidden;text-overflow:ellipsis}#info .row{color:var(--mute)}#info .pb{margin-top:4px}
+header{flex-wrap:wrap;white-space:nowrap}header>*{flex:none}header #sum{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}html{overflow:hidden}#info .row{color:var(--mute)}#info .pb{margin-top:4px}
 #info table{border-collapse:collapse;margin:4px 0}#info td{padding:1px 10px 1px 0;vertical-align:top}#info td:first-child{white-space:nowrap}#info .ms{color:var(--bad);cursor:pointer;text-decoration:underline dotted}
 .cxt{color:#a000a0;font-weight:600}.it.cx .t>div:first-child{text-decoration:line-through;text-decoration-color:#e600e6}
 .chip.ov{background:conic-gradient(#8e44ad 0 25%,#e74c3c 0 50%,#f39c12 0 75%,#2471a3 0)}.it.ovit .t>div:first-child{font-weight:600}
@@ -852,7 +852,7 @@ html[data-theme=dark] .cxt{color:#e08ae0}
 <label id="nbwrap" title="Tick when this image is not a beam detail drawing (a plan, a sketch, a cover sheet ...): its annotation is cancelled, and Save JSON keeps it as a page to skip (Label Studio: skipped; the AI: an example of what to skip)"><input type="checkbox" id="notbeam"> Not a beam drawing</label>
 <label id="cowrap" title="Who drew this sheet. Used to check the AI per consultant. Names you typed before are offered; Save JSON keeps it, Push corrections writes it to Label Studio">Consultant <input id="consultant" list="colist" size="11" placeholder="type name" autocomplete="off"></label><datalist id="colist"></datalist>
 <label id="testwrap" title="Tick for the pages of the fixed test set: the AI never trains on them, they are its exam. Correct these pages fully"><input type="checkbox" id="testpage"> Test page</label>
-<button id="hdsave" hidden title="Save as Label Studio JSON (Ctrl+S)">💾 Save JSON</button>
+<button id="hdsave" hidden title="Save as Label Studio JSON (Ctrl+S)">💾 Save JSON</button><button id="loadjson" title="Open an edited annotation JSON (a saved JSON or a Label Studio export) and show it on this page. Undo (Ctrl+Z in Edit) goes back">📂 Load JSON</button><button id="htmlsave" title="Save this review page with your edits in it (Ctrl+Shift+S). The first time the browser asks where: pick this same file to overwrite it; after that it saves straight to it">💾 Save HTML</button><button id="htmlsaveas" title="Save this review page with your edits in it as a new HTML file">Save HTML as…</button><input type="file" id="loadfile" accept=".json,application/json" hidden>
 <button id="editbtn" title="Add / remove / amend the annotation here (E)">✎ Edit</button> <button id="trainbtn" title="Add this page to the AI model's training set (the model is trained in Colab)">🧠 Training set</button> <button id="aibtn" title="Rules and AI side by side: what the AI model (trained in Colab) thinks of this page - the links it doubts or would add, regions it reads differently, labels without a box">🤖 AI check</button> <button id="alllinks">All links</button> <button id="fit">Fit</button><button id="copy">Copy wrong</button><button id="coordbtn" title="Coordinates beside the cursor (F6), like AutoCAD: % across and % down the sheet from its top-left, as in the annotation check lists, plus the region under the cursor">⌗ XY<b>F6</b></button><button id="themebtn" title="Light / dark theme (T), kept for every review page">◐</button>
 <span class="keys" style="color:var(--mute)" title="N/P next/prev · Space right · X wrong · F fit · A all links · O this beam's all-annotations view · M minimise the info panel · I hide it · L hide/show the list · E edit · T light/dark · Ctrl+F find"><kbd>N</kbd><kbd>P</kbd> <kbd>Space</kbd> <kbd>X</kbd> <kbd>F</kbd> <kbd>A</kbd> <kbd>O</kbd> <kbd>M</kbd> <kbd>L</kbd> <kbd>E</kbd> <kbd>T</kbd></span></header>
 <aside id="side"><div id="nbnote" hidden></div><div class="ltools"><button id="expall" title="Expand every group">▾ Expand all</button><button id="colall" title="Collapse every group">▸ Collapse all</button><button id="coldone" title="Collapse the groups whose items are all ticked ✓">Collapse ticked</button></div><div id="list"></div></aside>
@@ -869,7 +869,9 @@ html[data-theme=dark] .cxt{color:#e08ae0}
 <button class="tg" id="snapbtn" title="Snap to the corners and ends of the drawing's lines, and where lines cross (F3)">⌖ Snap<b>F3</b></button><button class="tg" id="perpbtn" title="Perpendicular snap: the point where your line meets a line or curve at 90° (F4)">⊥ Perp<b>F4</b></button><button class="tg" id="orthobtn" title="Ortho: lines only horizontal or vertical, like AutoCAD (F8; hold Shift to flip it for a moment)">∟ Ortho<b>F8</b></button>
 <span id="edcount"></span><span class="sp"></span>
 <button id="edsave" title="Save the annotation as Label Studio JSON (Ctrl+S)">💾 Save JSON</button></div><svg id="svg"><image id="img" href="data:image/jpeg;base64,__IMG__"/><g id="all"></g><g id="links"></g><g id="hl"></g><g id="ai"></g><g id="findg" pointer-events="none"></g><g id="snapg" pointer-events="none"></g><g id="issg" pointer-events="none"></g></svg><div id="ileg"></div><div id="info"></div></main>
+<script id="baked" type="application/json">null</script>
 <script>
+const SRC0 = "<!doctype html>\n" + document.documentElement.outerHTML;   // this page as it was opened (for Save HTML)
 const D = __DATA__;
 const COL = {BeamID:"#8e44ad",BeamName:"#8e44ad",BeamSize:"#16a085",RebarSize:"#e74c3c",Dimension:"#2471a3",Dim:"#2471a3",RebarLine:"#f39c12",DimensionLine:"#00a3d9",DrawingNo:"#5d6d7e",DrawingTitle:"#a04000",SectionMark:"#d35400",SectionTitle:"#7f8c8d",Cancelled:"#e600e6",Canceled:"#e600e6",Superseded:"#e600e6"};
 const col = l => COL[l] || "#555";
@@ -1155,15 +1157,24 @@ document.getElementById("colall").onclick = () => { D.groups.forEach(g => shut.a
 document.getElementById("coldone").onclick = () => { D.groups.forEach(g => { let all = true; for (let i = g.start; i < g.end; i++) if (marks[D.items[i].id] !== "ok") all = false; if (all) shut.add(g.name); }); saveShut(); list(); };
 // pan / zoom
 let drag = null;
-svg.addEventListener("mousedown", e => { if (editing && e.button === 0 && edDown(e)) { e.preventDefault(); return; }
+// the view stays on the drawing: smaller than the page it stays inside it, larger it keeps the whole page in view
+// (lo/hi: a view already outside when you start panning is not pulled back with a jump)
+function keepOnPage(v, from) {
+  const lim = (o, s, S, f) => { let lo = Math.min(0, S - s), hi = Math.max(0, S - s); if (f != null) { lo = Math.min(lo, f); hi = Math.max(hi, f); } return Math.max(lo, Math.min(hi, o)); };
+  return [lim(v[0], v[2], D.W, from && from[0]), lim(v[1], v[3], D.H, from && from[1]), v[2], v[3]];
+}
+svg.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault();          // no auto-scroll on the middle button
+  if (editing && e.button === 0 && edDown(e)) { e.preventDefault(); return; }
   drag = [e.clientX, e.clientY, vb.slice()]; svg.style.cursor = "grabbing"; });
+svg.addEventListener("auxclick", e => { if (e.button === 1) e.preventDefault(); });
 window.addEventListener("mouseup", e => { const panned = drag && Math.hypot(e.clientX - drag[0], e.clientY - drag[1]) > 3, was = drag; if (editing) edUp(e); drag = null;
   if (!editing) svg.style.cursor = "grab"; else if (panned) drawEdit();
   if (!editing && was && !panned && e.button === 0) reviewClick(e); });
-window.addEventListener("mousemove", e => { if (editing && edMove(e)) return; if (!drag) return; const k = vb[2] / svg.clientWidth; vb = [drag[2][0] - (e.clientX-drag[0])*k, drag[2][1] - (e.clientY-drag[1])*k, vb[2], vb[3]]; setVB(); });
-svg.addEventListener("wheel", e => { e.preventDefault(); const r = svg.getBoundingClientRect(), k = e.deltaY > 0 ? 1.2 : 1/1.2;
+window.addEventListener("mousemove", e => { if (editing && edMove(e)) return; if (!drag) return; const k = vb[2] / svg.clientWidth; vb = keepOnPage([drag[2][0] - (e.clientX-drag[0])*k, drag[2][1] - (e.clientY-drag[1])*k, vb[2], vb[3]], drag[2]); setVB(); });
+svg.addEventListener("wheel", e => { e.preventDefault(); const r = svg.getBoundingClientRect(); let k = e.deltaY > 0 ? 1.2 : 1/1.2;
   const px = vb[0] + (e.clientX - r.left) / r.width * vb[2], py = vb[1] + (e.clientY - r.top) / r.height * vb[3];
-  vb = [px - (px - vb[0]) * k, py - (py - vb[1]) * k, vb[2] * k, vb[3] * k]; setVB(); if (editing) drawEdit(); else if (cur >= 0) select(cur, false); else drawAll(false); }, {passive:false});
+  const fitW = Math.max(D.W, D.H * svg.clientWidth / svg.clientHeight); if (k > 1 && vb[2] * k > fitW) k = Math.max(1, fitW / vb[2]);   // no smaller than Fit
+  vb = keepOnPage([px - (px - vb[0]) * k, py - (py - vb[1]) * k, vb[2] * k, vb[3] * k]); setVB(); if (editing) drawEdit(); else if (cur >= 0) select(cur, false); else drawAll(false); }, {passive:false});
 svg.addEventListener("dblclick", e => {
   if (editing) return;                // edit mode detects its own double-clicks (the drawing is redrawn between clicks)
   const t = e.target.dataset && e.target.dataset.id; if (!t) return; const i = D.items.findIndex(it => it.id === t); if (i >= 0) select(i); });
@@ -1328,6 +1339,28 @@ function drawIssues() {
     el("circle", {cx, cy, r:sw(6), fill:c[2], stroke:"#fff", "stroke-width":sw(1.5)}, G); });
   legend();
 }
+// where the Issues panel sits: dragged by its title bar (kept in this browser), else top-left, below the edit bar when editing
+let ilegPos = null, ilegDrag = null, ilegDragged = false;
+try { ilegPos = JSON.parse(localStorage.getItem("relreview:ilegPos") || "null"); } catch (e) {}
+function placeIleg() {
+  const L = document.getElementById("ileg"); if (!L) return; const main = L.parentElement, bar = document.getElementById("edbar");
+  if (!ilegPos) { L.style.left = "10px"; L.style.top = (bar && !bar.hidden ? bar.offsetTop + bar.offsetHeight + 8 : 10) + "px"; return; }
+  L.style.left = Math.max(0, Math.min(ilegPos.x, main.clientWidth - Math.min(L.offsetWidth, 120))) + "px";
+  L.style.top = Math.max(0, Math.min(ilegPos.y, main.clientHeight - 30)) + "px";
+}
+window.addEventListener("mousemove", e => {
+  if (!ilegDrag) return; const dx = e.clientX - ilegDrag.x0, dy = e.clientY - ilegDrag.y0;
+  if (!ilegDrag.moved && Math.hypot(dx, dy) < 4) return;
+  ilegDrag.moved = true; ilegPos = {x: ilegDrag.l + dx, y: ilegDrag.t + dy}; placeIleg();
+});
+window.addEventListener("mouseup", () => {
+  if (!ilegDrag) return;
+  if (ilegDrag.moved) { ilegDragged = true; const L = document.getElementById("ileg");
+    ilegPos = {x: parseFloat(L.style.left) || 0, y: parseFloat(L.style.top) || 0};
+    try { localStorage.setItem("relreview:ilegPos", JSON.stringify(ilegPos)); } catch (e) {} }
+  ilegDrag = null;
+});
+window.addEventListener("resize", () => placeIleg());
 function legend() {
   const L = document.getElementById("ileg"); if (!L) return; const cnt = {};
   Object.values(R).forEach(g => { if (g.cx && !(g.problems || []).length) return; const seen = new Set();
@@ -1336,9 +1369,14 @@ function legend() {
   L.hidden = notBeam;
   const shown = rows.filter(c => !iHide.has(c[0]) && !["unk", "alias", "dim", "note"].includes(c[0])).reduce((a, c) => a + cnt[c[0]], 0);
   L.className = iMin ? "min" : "";
-  L.innerHTML = `<div class="ih" title="Show / hide this list">${iMin ? "▸" : "▾"} Issues on this page: ${shown || "none ✓"}</div>` +
+  L.innerHTML = `<div class="ih" title="Click to show / hide this list · drag to move it · double-click to put it back"><span class="grip">⠿</span>${iMin ? "▸" : "▾"} Issues on this page: ${shown || "none ✓"}</div>` +
     rows.map(c => `<div class="ir${iHide.has(c[0]) ? " off" : ""}" data-k="${c[0]}" title="Click to hide / show this kind"><span class="sw" style="border-color:${c[2]};background:${c[2]}33"></span>${c[1]}<span class="ic">${cnt[c[0]]}</span></div>`).join("");
-  L.querySelector(".ih").onclick = () => { iMin = !iMin; try { localStorage.setItem("relreview:imin", iMin ? "1" : "0"); } catch (e) {} legend(); };
+  const ih = L.querySelector(".ih");
+  ih.onclick = () => { if (ilegDragged) { ilegDragged = false; return; } iMin = !iMin; try { localStorage.setItem("relreview:imin", iMin ? "1" : "0"); } catch (e) {} legend(); };
+  ih.ondblclick = e => { e.stopPropagation(); ilegPos = null; try { localStorage.removeItem("relreview:ilegPos"); } catch (_) {} placeIleg(); };
+  ih.onmousedown = e => { if (e.button !== 0) return; const r = L.getBoundingClientRect(), m = L.parentElement.getBoundingClientRect();
+    ilegDrag = {x0: e.clientX, y0: e.clientY, l: r.left - m.left, t: r.top - m.top, moved: false}; e.preventDefault(); e.stopPropagation(); };
+  placeIleg();
   L.querySelectorAll(".ir").forEach(r => r.onclick = () => { const k = r.dataset.k; iHide.has(k) ? iHide.delete(k) : iHide.add(k);
     try { localStorage.setItem("relreview:ihide", JSON.stringify([...iHide])); } catch (e) {} drawIssues(); });
 }
@@ -1411,7 +1449,7 @@ function recompute() {
 
 // ---- history (undo / redo) and autosave in this browser ----
 const editable = g => ({id: g.id, n: g.n, label: g.label, kind: g.kind, x: g.x ?? null, y: g.y ?? null, w: g.w ?? null, h: g.h ?? null,
-  pts: g.pts || null, closed: !!g.closed, note: g.note || "", text: g.text ?? null, _new: !!g._new, _dirty: !!g._dirty, _mmpp: g._mmpp ?? null});
+  pts: g.pts || null, closed: !!g.closed, note: g.note || "", text: g.text ?? null, _new: !!g._new, _dirty: !!g._dirty, _noteSet: !!g._noteSet, _mmpp: g._mmpp ?? null});
 const snapshot = () => JSON.stringify({ord: ORD, regs: ORD.filter(id => R[id]).map(id => editable(R[id])), rels: D.rels, sel: selId, notBeam, consultant, testPage});
 function restore(s) {
   const st = JSON.parse(s), keep = {};
@@ -1705,6 +1743,7 @@ function buildResult() {
     }
     delete item.score;
     if (!raw && g.note) item.meta = {text: [g.note]};          // a new region's note (e.g. 'added from the AI check')
+    else if (raw && g._noteSet) { if (g.note) item.meta = Object.assign({}, item.meta, {text: [g.note]}); else if (item.meta) delete item.meta.text; }   // a note from a loaded JSON
     out.push(item, ...(raw ? raw.side : []));
   }
   const rawRel = {}; (D.raw_rels || []).forEach(r => { rawRel[r.from_id + ">" + r.to_id] = r; });
@@ -1809,9 +1848,9 @@ window.addEventListener("keydown", e => {
   if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
   const k = e.key.toLowerCase(), stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
   if (k === "e" && !e.ctrlKey && !e.metaKey) { stop(); if (notBeam) flash("Untick 'Not a beam drawing' first to edit"); else setEditing(!editing); return; }
-  if ((notBeam || (nEdits && !isSaved())) && (e.ctrlKey || e.metaKey) && k === "s") { stop(); saveJSON(); return; }
+  if ((notBeam || (nEdits && !isSaved())) && (e.ctrlKey || e.metaKey) && k === "s" && !e.shiftKey) { stop(); saveJSON(); return; }
   if (!editing) return;
-  if (e.ctrlKey || e.metaKey) { if (k === "z") { stop(); e.shiftKey ? redo() : undo(); } else if (k === "y") { stop(); redo(); } else if (k === "s") { stop(); saveJSON(); } return; }
+  if (e.ctrlKey || e.metaKey) { if (k === "z") { stop(); e.shiftKey ? redo() : undo(); } else if (k === "y") { stop(); redo(); } else if (k === "s" && !e.shiftKey) { stop(); saveJSON(); } return; }
   if (k === "delete" || k === "backspace") { stop(); if (selId) delRegion(selId); }
   else if (k === "escape") { stop(); if (draft || tool !== "select") { tool = "select"; draft = null; ed = null; clearSnap(); drawEdit(); } else if (selId) { selId = null; syncList(); drawEdit(); } }
   else if (k === "enter" || k === " ") {     // AutoCAD style: finish the command; with none running, repeat the last one
@@ -1823,10 +1862,125 @@ window.addEventListener("keydown", e => {
   else if (k === "b") { stop(); setTool("box"); } else if (k === "d") { stop(); setTool("line"); } else if (k === "r") { stop(); setTool("link"); }
   else if (k === "g") { stop(); setTool("extend"); } else if (k === "w") { stop(); setTool("redraw"); }
 }, true);
-window.addEventListener("beforeunload", e => { if (nEdits && !isSaved()) { e.preventDefault(); e.returnValue = ""; } });
+window.addEventListener("beforeunload", e => { if (nEdits && !isSaved() && htmlSavedVer !== ver) { e.preventDefault(); e.returnValue = ""; } });
+
+// ---- Save HTML: this page with your edits in it (they open as the page's own annotation) ----
+let htmlSavedVer = null, htmlHandle = null;
+const BAKED = (() => { try { return JSON.parse((document.getElementById("baked") || {}).textContent || "null"); } catch (e) { return null; } })();
+if (BAKED && BAKED.state) {            // a page saved with Save HTML: start from the edits saved in it
+  restore(BAKED.state); nEdits = BAKED.n || 0; hist = []; fut = []; ver = 0; selId = null;
+  savedVer = BAKED.jsonSaved ? 0 : null; savedFile = BAKED.file || ""; htmlSavedVer = 0;
+}
+const pageFile = () => { try { const f = decodeURIComponent(location.pathname.split("/").pop() || ""); if (/\.html?$/i.test(f)) return f; } catch (e) {}
+  return "review_" + D.image.replace(/\.[^.]+$/, "") + ".html"; };
+function bakedHTML() {
+  const st = {saved_at: new Date().toISOString(), n: nEdits, jsonSaved: isSaved(), file: savedFile, state: snapshot()};
+  const tag = '<script id="baked" type="application/json">' + JSON.stringify(st).replace(/</g, "\\u003c") + "</" + "script>";
+  let h = SRC0.replace(/<html[^>]*>/i, "<html>");                // not the light / dark choice of this browser
+  const re = /<script id="baked" type="application\/json">[\s\S]*?<\/script>/;
+  h = re.test(h) ? h.replace(re, () => tag) : h.replace(/<script>\s*const SRC0/, m => tag + "\n" + m);
+  return h;
+}
+async function saveHTML(as) {
+  const html = bakedHTML(), stem = pageFile().replace(/\.html?$/i, "");
+  const name = as ? stem.replace(/_edited(_\d+)?$/, "") + "_edited.html" : pageFile();
+  const done = f => { htmlSavedVer = ver; flash("Saved " + f + (nEdits ? ` (${nEdits} edit${nEdits > 1 ? "s" : ""} in it)` : "")); };
+  if (window.showSaveFilePicker) {
+    try {
+      let h = as ? null : htmlHandle;
+      if (!h) h = await window.showSaveFilePicker({suggestedName: name, id: "relreview-html", types: [{description: "Review page", accept: {"text/html": [".html"]}}]});
+      const w = await h.createWritable(); await w.write(new Blob([html], {type: "text/html"})); await w.close();
+      htmlHandle = h; done(h.name); return;
+    } catch (e) { if (e && e.name === "AbortError") return; htmlHandle = null; }      // no file picker: download it instead
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([html], {type: "text/html"})); a.download = as ? name : stem + "_edited.html";
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  done(a.download + " - see your browser's downloads");
+}
+document.getElementById("htmlsave").onclick = () => saveHTML(false);
+document.getElementById("htmlsaveas").onclick = () => saveHTML(true);
+window.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s") { e.preventDefault(); e.stopImmediatePropagation(); saveHTML(false); } }, true);
+
+// ---- Load JSON: an edited annotation (Save JSON, a Label Studio export) shown on this page, as one edit (undo goes back) ----
+function pickLoaded(js) {              // the task for this page in a file: [task, ...], a task, {result: [...]}, or [region, ...]
+  if (Array.isArray(js) && js.length && js.every(r => r && r.type && !r.annotations && !r.data)) return {result: js};
+  const tasks = Array.isArray(js) ? js : [js];
+  return tasks.find(t => t && t.id === D.task_meta.id) || tasks.find(t => t && t.data && imgBase(t.data.image) === imgBase(D.image)) || (tasks.length === 1 ? tasks[0] : null);
+}
+function imgBase(s) {                  // '/data/local-files/?d=261002_Image%5Cname.png', 'G:\\...\\name.png', 'ab12cd34-name.png' -> 'name'
+  s = String(s || ""); const q = /[?&]d=([^&]*)/.exec(s); if (q) s = q[1];
+  try { s = decodeURIComponent(s); } catch (e) {}
+  return s.split(/[\\/]/).pop().replace(/^[0-9a-f]{8}-/i, "").replace(/\.[^.]+$/, "").toLowerCase();
+}
+function resultOf(t) {                 // as the page builder picks it: the latest annotation, else the latest prediction
+  if (t.result) return {result: t.result, cancelled: false};
+  const byT = (a, b) => String(a.updated_at || a.created_at || "").localeCompare(String(b.updated_at || b.created_at || ""));
+  const anns = (t.annotations || []).filter(a => a && typeof a === "object").sort(byT);
+  const ok = anns.filter(a => !a.was_cancelled && (a.result || []).length);
+  if (ok.length) return {result: ok[ok.length - 1].result, cancelled: false};
+  const pr = (t.predictions || []).filter(p => p && (p.result || []).length);
+  if (pr.length) return {result: pr[pr.length - 1].result, cancelled: false};
+  const last = anns[anns.length - 1];
+  return {result: (last && last.result) || [], cancelled: !!(last && last.was_cancelled)};
+}
+function loadTask(t, fname) {
+  const {result, cancelled} = resultOf(t), W = D.W, H = D.H;
+  const r6 = v => Math.round(v * 1e6) / 1e6, geo = r => { const v = r.value || {};
+    return JSON.stringify([r.type, (v.rectanglelabels || v.vectorlabels || v.polygonlabels || [])[0],
+      r.type === "rectanglelabels" ? [v.x, v.y, v.width, v.height].map(r6) : r.type === "vectorlabels" ? [(v.vertices || []).map(p => [r6(p.x), r6(p.y)]), !!v.closed] : (v.points || []).map(p => p.map(r6))]); };
+  const noteOf = r => ((r.meta || {}).text || []).join(" ");
+  const regs = [], ord = [], seen = new Set(); let n = Math.max(0, ...Object.values(R).map(g => g.n || 0));
+  for (const r of result) {
+    if (!r || !["rectanglelabels", "vectorlabels", "polygonlabels"].includes(r.type) || !r.value || seen.has(r.id)) continue;
+    const v = r.value, label = (v.rectanglelabels || v.vectorlabels || v.polygonlabels || [])[0]; if (!label) continue;
+    seen.add(r.id);
+    const raw = D.raw && D.raw[r.id], old = R[r.id], same = raw && geo(raw.main) === geo(r) && noteOf(raw.main) === noteOf(r);
+    const g = {id: r.id, n: old ? old.n : ++n, label, x: null, y: null, w: null, h: null, pts: null, closed: false, note: noteOf(r), text: null,
+               _new: !raw, _dirty: !same, _noteSet: !!raw, _mmpp: old && old._mmpp != null ? old._mmpp : null};
+    if (r.type === "rectanglelabels") {
+      Object.assign(g, {kind: "box", x: v.x / 100 * W, y: v.y / 100 * H, w: v.width / 100 * W, h: v.height / 100 * H});
+      g.text = D.words && D.words.length ? boxText(g) : old && old.text != null ? old.text : null;
+    } else {
+      let pts = (r.type === "vectorlabels" ? (v.vertices || []).map(p => [p.x, p.y]) : (v.points || [])).map(([x, y]) => [x / 100 * W, y / 100 * H]);
+      if (pts.length < 2) continue;
+      g.closed = r.type === "polygonlabels" || !!v.closed; if (g.closed) pts = [...pts, pts[0]];
+      Object.assign(g, {kind: "line", pts});
+    }
+    regs.push(g); ord.push(r.id);
+  }
+  const ids = new Set(ord), rels = [];
+  result.forEach(r => { if (r && r.type === "relation" && ids.has(r.from_id) && ids.has(r.to_id) && r.from_id !== r.to_id &&
+    !rels.some(([a, b]) => a === r.from_id && b === r.to_id)) rels.push([r.from_id, r.to_id]); });
+  const meta = t.meta || {}, pt = String(meta.page_type || "").toLowerCase();
+  const st = {ord, regs, rels, sel: null,
+    notBeam: pt === "not a beam drawing" ? true : pt === "beam drawing" ? false : cancelled && !regs.length ? true : notBeam,
+    consultant: meta.consultant != null ? String(meta.consultant) : consultant,
+    testPage: meta.split ? meta.split === "test" : testPage};
+  if (editing && st.notBeam) setEditing(false);
+  edit(() => restore(JSON.stringify(st)));
+  applyNotBeam(); applyTags();
+  if (!editing) { if (cur >= 0 && cur < D.items.length) select(cur, false); else drawAll(false); }
+  flash(`Loaded ${fname}: ${regs.length} regions, ${rels.length} links${regs.some(g => g._dirty) ? "" : " (the same as this page)"} - Save JSON / Save HTML to keep it`);
+}
+document.getElementById("loadjson").onclick = () => { const f = document.getElementById("loadfile"); f.value = ""; f.click(); };
+document.getElementById("loadfile").onchange = e => {
+  const file = e.target.files && e.target.files[0]; if (!file) return;
+  file.text().then(txt => {
+    let js; try { js = JSON.parse(txt); } catch (err) { alert(file.name + " is not a JSON file."); return; }
+    const t = pickLoaded(js);
+    if (!t) { alert(`${file.name} has no task for this page (task ${D.task_meta.id}, ${D.image}).`); return; }
+    const img = t.data && t.data.image ? imgBase(t.data.image) : "";
+    if (img && img !== imgBase(D.image) && !confirm(`${file.name} is for ${img}, this page is ${D.image}. Load it anyway?`)) return;
+    loadTask(t, file.name);
+  });
+};
+
 (function offerRestore() {             // edits kept in this browser from an earlier visit
   let st = null; try { st = JSON.parse(localStorage.getItem(EKEY) || "null"); } catch (e) {}
   if (!st || !st.n || st.stamp !== D.task_meta.stamp) return;
+  const plain = s => { try { const o = JSON.parse(s); delete o.sel; return JSON.stringify(o); } catch (e) { return s; } };
+  if (BAKED && BAKED.state && plain(st.state) === plain(BAKED.state)) return;      // the same edits this saved page opened with
   const b = document.getElementById("restore"), n = `${st.n} edit${st.n > 1 ? "s" : ""}`; b.hidden = false;
   const nbst = (() => { try { return JSON.parse(st.state).notBeam; } catch (e) { return undefined; } })();
   const what = nbst ? ` (this page ticked <b>Not a beam drawing</b>)` : nbst === false && D.task_meta.not_beam ? ` (this page unticked: it is a beam drawing)` : "";
@@ -2261,7 +2415,8 @@ window.addEventListener("keydown", e => {
   else if (e.key.toLowerCase() === "t" && !e.ctrlKey && !e.metaKey && !e.altKey) { stop(); toggleTheme(); }
 }, true);
 
-recompute(); applyNotBeam(); list(); fit(); drawIssues(); if (D.items.length && !notBeam) select(0);
+recompute(); applyNotBeam(); applyTags(); list(); fit(); drawIssues(); if (D.items.length && !notBeam) select(0);
+new MutationObserver(() => placeIleg()).observe(document.getElementById("edbar"), {attributes: true, attributeFilter: ["hidden"]});
 </script></body></html>"""
 
 
