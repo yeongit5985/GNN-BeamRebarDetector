@@ -764,7 +764,7 @@ body.nolist{grid-template-columns:0 minmax(0,1fr)}body.nolist aside{visibility:h
 .it .t{flex:1;min-width:0}.it .t div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.it small{color:var(--mute)}
 .chip{width:10px;height:10px;border-radius:2px;flex:none}.pb{color:var(--bad);font-size:12px}
 #ileg{position:absolute;left:10px;top:10px;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;max-width:340px;box-shadow:0 2px 8px #0002}
-#ileg .ih{display:flex;align-items:center;gap:6px;font-weight:600;cursor:move;user-select:none}#ileg .grip{color:var(--mute);font-size:13px}#ileg .ir{display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;user-select:none}
+#ileg .ih{display:flex;align-items:center;gap:6px;font-weight:600;cursor:move;user-select:none}#ileg .grip{color:var(--mute);font-size:13px}#ileg .ioff{margin-left:auto;padding:0 7px;font-size:11px;font-weight:600}#ileg.off .ir{opacity:.35}#issbtn.on{background:#fb8c00;color:#fff;border-color:#fb8c00}#ileg .ir{display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;user-select:none}
 #ileg .ir.off{opacity:.4;text-decoration:line-through}#ileg .sw{width:12px;height:12px;border-radius:3px;flex:none;border:2px solid}#ileg .ic{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mute)}
 #ileg.min .ir{display:none}.pb .dot{display:inline-block;width:8px;height:8px;border-radius:4px;margin-right:4px;vertical-align:middle}
 .st{width:18px;text-align:center;font-weight:700}.st.ok{color:var(--ok)}.st.bad{color:var(--bad)}
@@ -853,7 +853,7 @@ html[data-theme=dark] .cxt{color:#e08ae0}
 <label id="cowrap" title="Who drew this sheet. Used to check the AI per consultant. Names you typed before are offered; Save JSON keeps it, Push corrections writes it to Label Studio">Consultant <input id="consultant" list="colist" size="11" placeholder="type name" autocomplete="off"></label><datalist id="colist"></datalist>
 <label id="testwrap" title="Tick for the pages of the fixed test set: the AI never trains on them, they are its exam. Correct these pages fully"><input type="checkbox" id="testpage"> Test page</label>
 <button id="hdsave" hidden title="Save as Label Studio JSON (Ctrl+S)">💾 Save JSON</button><button id="loadjson" title="Open an edited annotation JSON (a saved JSON or a Label Studio export) and show it on this page. Undo (Ctrl+Z in Edit) goes back">📂 Load JSON</button><button id="htmlsave" title="Save this review page with your edits in it (Ctrl+Shift+S). The first time the browser asks where: pick this same file to overwrite it; after that it saves straight to it">💾 Save HTML</button><button id="htmlsaveas" title="Save this review page with your edits in it as a new HTML file">Save HTML as…</button><input type="file" id="loadfile" accept=".json,application/json" hidden>
-<button id="editbtn" title="Add / remove / amend the annotation here (E)">✎ Edit</button> <button id="trainbtn" title="Add this page to the AI model's training set (the model is trained in Colab)">🧠 Training set</button> <button id="aibtn" title="Rules and AI side by side: what the AI model (trained in Colab) thinks of this page - the links it doubts or would add, regions it reads differently, labels without a box">🤖 AI check</button> <button id="alllinks">All links</button> <button id="fit">Fit</button><button id="copy">Copy wrong</button><button id="coordbtn" title="Coordinates beside the cursor (F6), like AutoCAD: % across and % down the sheet from its top-left, as in the annotation check lists, plus the region under the cursor">⌗ XY<b>F6</b></button><button id="themebtn" title="Light / dark theme (T), kept for every review page">◐</button>
+<button id="editbtn" title="Add / remove / amend the annotation here (E)">✎ Edit</button> <button id="trainbtn" title="Add this page to the AI model's training set (the model is trained in Colab)">🧠 Training set</button> <button id="aibtn" title="Rules and AI side by side: what the AI model (trained in Colab) thinks of this page - the links it doubts or would add, regions it reads differently, labels without a box">🤖 AI check</button> <button id="issbtn" title="Hide / show all the coloured issue marks on the drawing (H)">⚑ Marks on</button> <button id="alllinks">All links</button> <button id="fit">Fit</button><button id="copy">Copy wrong</button><button id="coordbtn" title="Coordinates beside the cursor (F6), like AutoCAD: % across and % down the sheet from its top-left, as in the annotation check lists, plus the region under the cursor">⌗ XY<b>F6</b></button><button id="themebtn" title="Light / dark theme (T), kept for every review page">◐</button>
 <span class="keys" style="color:var(--mute)" title="N/P next/prev · Space right · X wrong · F fit · A all links · O this beam's all-annotations view · M minimise the info panel · I hide it · L hide/show the list · E edit · T light/dark · Ctrl+F find"><kbd>N</kbd><kbd>P</kbd> <kbd>Space</kbd> <kbd>X</kbd> <kbd>F</kbd> <kbd>A</kbd> <kbd>O</kbd> <kbd>M</kbd> <kbd>L</kbd> <kbd>E</kbd> <kbd>T</kbd></span></header>
 <aside id="side"><div id="nbnote" hidden></div><div class="ltools"><button id="expall" title="Expand every group">▾ Expand all</button><button id="colall" title="Collapse every group">▸ Collapse all</button><button id="coldone" title="Collapse the groups whose items are all ticked ✓">Collapse ticked</button></div><div id="list"></div></aside>
 <main><div id="banner" hidden></div><div id="nbbar" hidden></div><div id="restore" hidden></div><div id="edmsg" hidden></div><div id="coordtip" hidden></div><div id="trainp" hidden></div><div id="aip" hidden></div>
@@ -1328,9 +1328,12 @@ function issueOf(g) {                 // the first shown kind of problem (or inf
   for (const p of [...(g.problems || []), ...(g.info || [])]) { const c = catOf(p); if (c && !iHide.has(c[0])) return c; }
   return null;
 }
+let iOff = false; try { iOff = localStorage.getItem("relreview:ioff") === "1"; } catch (e) {}
+function setIOff(v) { iOff = v; try { localStorage.setItem("relreview:ioff", iOff ? "1" : "0"); } catch (e) {} drawIssues(); flash(iOff ? "Issue marks hidden (H shows them)" : "Issue marks shown (H hides them)"); }
 function drawIssues() {
   const G = document.getElementById("issg"); if (!G) return; G.innerHTML = "";
-  if (notBeam) return;
+  const ib = document.getElementById("issbtn"); if (ib) { ib.classList.toggle("on", !iOff); ib.textContent = iOff ? "⚑ Marks off" : "⚑ Marks on"; }
+  if (notBeam || iOff) { legend(); return; }
   Object.values(R).forEach(g => { const c = issueOf(g); if (!c) return;
     if (g.kind === "box") { const m = sw(4);
       el("rect", {x:g.x - m, y:g.y - m, width:g.w + 2*m, height:g.h + 2*m, rx:sw(3), fill:c[2] + "26", stroke:c[2], "stroke-width":sw(3)}, G); }
@@ -1368,10 +1371,13 @@ function legend() {
   const rows = PCAT.filter(c => cnt[c[0]]);
   L.hidden = notBeam;
   const shown = rows.filter(c => !iHide.has(c[0]) && !["unk", "alias", "dim", "note"].includes(c[0])).reduce((a, c) => a + cnt[c[0]], 0);
-  L.className = iMin ? "min" : "";
-  L.innerHTML = `<div class="ih" title="Click to show / hide this list · drag to move it · double-click to put it back"><span class="grip">⠿</span>${iMin ? "▸" : "▾"} Issues on this page: ${shown || "none ✓"}</div>` +
+  L.className = (iMin ? "min" : "") + (iOff ? " off" : "");
+  L.innerHTML = `<div class="ih" title="Click to show / hide this list · drag to move it · double-click to put it back"><span class="grip">⠿</span>${iMin ? "▸" : "▾"} Issues on this page: ${shown || "none ✓"}<button class="ioff" title="Hide / show all the coloured issue marks on the drawing (H)">${iOff ? "Show marks" : "Hide marks"}</button></div>` +
     rows.map(c => `<div class="ir${iHide.has(c[0]) ? " off" : ""}" data-k="${c[0]}" title="Click to hide / show this kind"><span class="sw" style="border-color:${c[2]};background:${c[2]}33"></span>${c[1]}<span class="ic">${cnt[c[0]]}</span></div>`).join("");
   const ih = L.querySelector(".ih");
+  const ob = L.querySelector(".ioff"); ob.onmousedown = e => e.stopPropagation(); ob.ondblclick = e => e.stopPropagation();
+  ob.onclick = e => { e.stopPropagation(); setIOff(!iOff); };
+  L.classList.toggle("off", iOff);
   ih.onclick = () => { if (ilegDragged) { ilegDragged = false; return; } iMin = !iMin; try { localStorage.setItem("relreview:imin", iMin ? "1" : "0"); } catch (e) {} legend(); };
   ih.ondblclick = e => { e.stopPropagation(); ilegPos = null; try { localStorage.removeItem("relreview:ilegPos"); } catch (_) {} placeIleg(); };
   ih.onmousedown = e => { if (e.button !== 0) return; const r = L.getBoundingClientRect(), m = L.parentElement.getBoundingClientRect();
@@ -1899,6 +1905,9 @@ async function saveHTML(as) {
   done(a.download + " - see your browser's downloads");
 }
 document.getElementById("htmlsave").onclick = () => saveHTML(false);
+document.getElementById("issbtn").onclick = () => setIOff(!iOff);
+window.addEventListener("keydown", e => { if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key.toLowerCase() === "h") { e.preventDefault(); setIOff(!iOff); } });
 document.getElementById("htmlsaveas").onclick = () => saveHTML(true);
 window.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s") { e.preventDefault(); e.stopImmediatePropagation(); saveHTML(false); } }, true);
 
