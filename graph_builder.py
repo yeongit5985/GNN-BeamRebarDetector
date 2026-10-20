@@ -1003,7 +1003,12 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
                                  for c in cancels.values() for b in c["beams"]], **sheet)
     stats = dict(nodes=len(nodes), edges=int(edge_index.shape[1]), pairs=len(pairs), positives=int(pair_label.sum()),
                  relations=len(rels), relations_found=int(sum(found)), lost_relations=len(lost), unmatched_boxes=len(unmatched_boxes),
-                 cancelled_beams=len(meta["cancelled_beams"]))
+                 cancelled_beams=len(meta["cancelled_beams"]),
+                 # for comparing two builds: labelled relations with >=1 candidate pair [found, total] per type, and the
+                 # candidate pairs / true pairs per pair kind (the model can only find relations that are candidates)
+                 relation_recall={k: [int(f), int(n)] for k, (f, n) in sorted(by_type.items())},
+                 pairs_per_kind={PAIR_KINDS[k]: int((pair_kind == k).sum()) for k in range(len(PAIR_KINDS))},
+                 positives_per_kind={PAIR_KINDS[k]: int(pair_label[pair_kind == k].sum()) for k in range(len(PAIR_KINDS))})
     print(f"graph: {stats['nodes']} nodes, {stats['edges']} edges, {stats['pairs']} candidate pairs, "
           f"{stats['positives']} true pairs ({stats['relations_found']}/{stats['relations']} relations reachable)")
 
@@ -1060,13 +1065,33 @@ def is_not_beam(task):
     return bool(anns) and bool(anns[-1].get("was_cancelled"))
 
 
+def save_build_stats(stats, out_dir):
+    """Add the pages' build stats (stem -> build_graph's stats) to <out_dir>/build_stats.json, with the totals
+    over all pages in it: relation recall per type, candidate / true pairs per pair kind, lost relations."""
+    path = Path(out_dir) / "build_stats.json"
+    pages = json.loads(path.read_text(encoding="utf-8")).get("pages", {}) if path.exists() else {}
+    pages.update(stats)
+    total = dict(pages=len(pages), relation_recall=defaultdict(lambda: [0, 0]), pairs_per_kind=defaultdict(int),
+                 positives_per_kind=defaultdict(int), lost_relations=0, unmatched_boxes=0)
+    for s in pages.values():
+        for k, (f, n) in s.get("relation_recall", {}).items():
+            total["relation_recall"][k][0] += f; total["relation_recall"][k][1] += n
+        for key in ("pairs_per_kind", "positives_per_kind"):
+            for k, n in s.get(key, {}).items():
+                total[key][k] += n
+        total["lost_relations"] += s.get("lost_relations", 0); total["unmatched_boxes"] += s.get("unmatched_boxes", 0)
+    path.write_text(json.dumps(dict(total=total, pages=pages), indent=1), encoding="utf-8")
+    return path
+
+
 def export_to_graphs(export_path, pdf_dir, out_dir, replace=True, verbose=True):
     """Every task of a Label Studio JSON export that has an annotation -> a graph in out_dir. Returns the stems.
     replace=False keeps pages that are already in out_dir (e.g. corrected later in the review page).
-    Pages marked not a beam drawing (or skipped in Label Studio) are left out."""
+    Pages marked not a beam drawing (or skipped in Label Studio) are left out.
+    The pages' build stats go to out_dir/build_stats.json (see save_build_stats)."""
     tasks = json.loads(Path(export_path).read_text(encoding="utf-8"))
     tasks = tasks if isinstance(tasks, list) else [tasks]
-    stems = []
+    stems, stats = [], {}
     for t in tasks:
         if is_not_beam(t):
             builtins.print(f"task {t.get('id')}: not a beam drawing (ticked in a review page / skipped in Label Studio) - left out")
@@ -1082,8 +1107,15 @@ def export_to_graphs(export_path, pdf_dir, out_dir, replace=True, verbose=True):
             continue
         g = build_graph(*where, t)
         stems.append(save_graph(g, out_dir))
+        stats[stems[-1]] = g["stats"]
         if verbose:
             s = g["stats"]
             builtins.print(f"task {t.get('id')}: {stems[-1]}  {s['nodes']} nodes, {s['pairs']} pairs, "
                            f"{s['positives']} true pairs, {s['relations_found']}/{s['relations']} relations reachable")
+    if stats:
+        path = save_build_stats(stats, out_dir)
+        if verbose:
+            rr = json.loads(path.read_text(encoding="utf-8"))["total"]["relation_recall"]
+            builtins.print("relation recall (relations with >=1 candidate pair):",
+                           {k: f"{f}/{n}" for k, (f, n) in rr.items()}, f"-> {path.name}")
     return stems
