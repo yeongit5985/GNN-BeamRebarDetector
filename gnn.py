@@ -734,3 +734,78 @@ def metrics_text(m):
     for k, v in m["per_kind"].items():
         lines.append(f"   {k:<38} P {v['precision']:.2f}  R {v['recall']:.2f}  F1 {v['f1']:.2f}  ({v['true']} relations, threshold {v['threshold']})")
     return "\n".join(lines)
+
+
+# ------------------------------------------------------------------------------------------- AI answer as a page
+LS_LABEL = {"BeamName": "BeamID", "Dim": "Dimension", "DimLine": "DimensionLine"}     # class -> Label Studio label
+
+
+def _paths(segs, tol=0.05):
+    """A line node's segments [[x0, y0], [x1, y1]] -> point chains, joined where ends meet."""
+    chains = []
+    for a, b in (map(tuple, s) for s in segs):
+        for c in chains:
+            if math.dist(c[-1], a) < tol: c.append(b); break
+            if math.dist(c[-1], b) < tol: c.append(a); break
+            if math.dist(c[0], b) < tol: c.insert(0, a); break
+            if math.dist(c[0], a) < tol: c.insert(0, b); break
+        else:
+            chains.append([a, b])
+    return chains
+
+
+@torch.no_grad()
+def prediction_task(model, g, task, page_w, page_h, img_w=4967, img_h=3509):
+    """What the model reads on a page, as a Label Studio task the review page opens: a region for each item it
+    labels (nodes of one of your regions with the same class are joined) and the links above its thresholds.
+    A region whose class differs from your label says so in its note ('AI: RebarSize · yours: BeamSize')."""
+    nprob, pprob = predict(model, g)
+    yp, y = nprob.argmax(1).numpy(), g["y"].numpy()
+    classes, kinds = g["class_names"], g["pair_kinds"]
+    thr = getattr(model, "thresholds", None) or {}
+    nodes = g["meta"]["nodes"]
+    groups = defaultdict(list)                        # (your region or the node itself, predicted class) -> nodes
+    for i, n in enumerate(nodes):
+        if yp[i] > 0:
+            groups[(n.get("entity") or f"n{i}", int(yp[i]))].append(i)
+    rid, result = {}, []
+    px, py = lambda v: v / page_w * 100, lambda v: v / page_h * 100
+    base = dict(to_name="image", original_width=img_w, original_height=img_h, image_rotation=0)
+    for k, ((key, c), idx) in enumerate(groups.items()):
+        lab = LS_LABEL.get(classes[c], classes[c])
+        mine = {classes[y[i]] for i in idx if y[i] > 0}
+        note = [] if mine == {classes[c]} else [f"AI: {lab} · yours: {', '.join(LS_LABEL.get(m, m) for m in sorted(mine)) or 'nothing'}"]
+        prob = float(nprob[idx, c].mean())
+        new = []
+        segs = [s for i in idx for s in nodes[i].get("segs", [])]
+        if classes[c] in ("RebarLine", "DimLine") and segs:
+            for j, ch in enumerate(_paths(segs)):
+                new.append(dict(base, id=f"ai{k}_{j}", type="vectorlabels", from_name="vec", score=prob,
+                                   value=dict(closed=False, vectorlabels=[lab], vertices=[
+                                       dict(id=f"ai{k}_{j}_{q}", x=px(x), y=py(yy), prevPointId=f"ai{k}_{j}_{q - 1}" if q else None,
+                                            isBezier=False) for q, (x, yy) in enumerate(ch)])))
+        else:
+            bb = np.array([nodes[i]["bbox"] for i in idx])
+            x0, y0, x1, y1 = bb[:, 0].min(), bb[:, 1].min(), bb[:, 2].max(), bb[:, 3].max()
+            new.append(dict(base, id=f"ai{k}", type="rectanglelabels", from_name="label", score=prob,
+                               value=dict(x=px(x0), y=py(y0), width=px(x1 - x0), height=py(y1 - y0), rotation=0,
+                                          rectanglelabels=[lab])))
+        for r in new:
+            if note:
+                r["meta"] = {"text": note}
+        result += new
+        for i in idx:
+            rid[i] = [r["id"] for r in new]
+    pi, pk, pp = g["pair_index"].numpy(), g["pair_kind"].numpy(), pprob.numpy()
+    seen = set()
+    for a, b, k, p in zip(pi[0], pi[1], pk, pp):
+        if p <= thr.get(kinds[k], THRESHOLD) or a not in rid or b not in rid:
+            continue
+        for fa in rid[a]:
+            for tb in rid[b]:
+                if fa != tb and (fa, tb) not in seen and (tb, fa) not in seen:
+                    seen.add((fa, tb))
+                    result.append(dict(from_id=fa, to_id=tb, type="relation", direction="right"))
+    meta = dict(task.get("meta") or {}, edited_in="AI test (model's own answer)")
+    return dict(id=task.get("id"), data=task.get("data"), meta=meta, predictions=[],
+                annotations=[dict(id=1, result=result, was_cancelled=False, ground_truth=False)])
