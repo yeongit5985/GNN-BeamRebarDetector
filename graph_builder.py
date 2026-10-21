@@ -577,12 +577,13 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
     for rid, p, closed in line_parts:
         pts = np.vstack([p, p[:1]]) if closed else p
         dense = densify(pts, STEP)
-        d, k = L_tree.query(dense, distance_upper_bound=LINE_MATCH_TOL * UNIT)
-        ok = np.isfinite(d)
+        d, k = L_tree.query(dense, k=4, distance_upper_bound=LINE_MATCH_TOL * UNIT)
+        ok = np.isfinite(d[:, 0])
         owners = np.full(len(dense), -1)
-        owners[ok] = L_own[k[ok]]
-        for o in owners[ok]:
-            votes[o][rid] += STEP
+        owners[ok] = L_own[k[ok, 0]]
+        for dd, kk in zip(d[ok], k[ok]):          # a line drawn twice on top of itself: both copies get the vote
+            for o in {L_own[q] for q, x in zip(kk, dd) if x <= dd[0] + 0.05}:
+                votes[o][rid] += STEP
         if rid in ann_dense:                         # a cut-off piece: one line with its labelled piece
             dense, owners = np.vstack([ann_dense[rid], dense]), np.concatenate([ann_owner[rid], owners])
         ann_dense[rid], ann_owner[rid] = dense, owners
