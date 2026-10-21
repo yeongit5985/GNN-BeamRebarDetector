@@ -477,15 +477,17 @@ class TextEncoder(nn.Module):
 
 class BeamGNN(nn.Module):
     def __init__(self, n_feat, n_classes, n_edge_types, edge_dim, pair_dim, hidden=64, layers=3, dropout=0.1,
-                 read_text=True, pattern_cols=(), hint=False):
+                 read_text=True, pattern_cols=(), hint=False, n_pair_kinds=None):
         super().__init__()
         self.config = dict(n_feat=n_feat, n_classes=n_classes, n_edge_types=n_edge_types, edge_dim=edge_dim,
                            pair_dim=pair_dim, hidden=hidden, layers=layers, dropout=dropout,
-                           read_text=read_text, pattern_cols=list(pattern_cols), hint=hint)
+                           read_text=read_text, pattern_cols=list(pattern_cols), hint=hint, n_pair_kinds=n_pair_kinds)
         # the rule's same-bars hint (last pair feature) also goes straight to the pair score, with its own
         # weight: inside the pair head it is 1 input of ~200 and, with few true pairs, the network learned
         # the label texts instead. Starts trusting the hint; training turns the weight down if it misleads.
-        self.hint_w = nn.Parameter(torch.tensor(4.0)) if hint else None
+        # One weight per pair kind: the same-bars hint and the link-shape hint are not equally reliable, and a
+        # shared weight raised for one also raised the other. Models saved before this have one shared weight.
+        self.hint_w = (nn.Parameter(torch.full((n_pair_kinds,), 4.0)) if n_pair_kinds else nn.Parameter(torch.tensor(4.0))) if hint else None
         keep = torch.ones(n_feat)
         keep[list(pattern_cols)] = 0                 # hand-made pattern features switched off
         self.register_buffer("keep", keep)
@@ -507,7 +509,8 @@ class BeamGNN(nn.Module):
         pair_in = torch.cat([h[i], h[j], h[i] * h[j], g["pair_x"]], 1)
         pair = self.pair_head(pair_in).squeeze(1)
         if self.hint_w is not None:
-            pair = pair + self.hint_w * g["pair_x"][:, -1]
+            w = self.hint_w[g["pair_kind"]] if self.hint_w.dim() else self.hint_w
+            pair = pair + w * g["pair_x"][:, -1]
         return self.node_head(h), pair
 
 
@@ -517,7 +520,7 @@ def new_model(example, hidden=64, layers=3, dropout=0.1, read_text=True, use_pat
     cols = [] if use_patterns else [example["feature_names"].index(f) for f in PATTERN_FEATURES if f in example["feature_names"]]
     return BeamGNN(example["x"].shape[1], len(example["class_names"]), len(example["edge_types"]),
                    example["edge_attr"].shape[1], example["pair_x"].shape[1], hidden, layers, dropout, read_text, cols,
-                   hint=bool(example.get("has_hint")))
+                   hint=bool(example.get("has_hint")), n_pair_kinds=len(example["pair_kinds"]))
 
 
 # ------------------------------------------------------------------------------------------- training
