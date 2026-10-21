@@ -247,6 +247,7 @@ def graph_from_arrays(A, meta, name="page"):
 
 
 IGNORE = -1      # node label left out of the loss and the scores
+UNSCORED = ("DimLine",)   # trained on, but left out of the scores; shown under "reference" only (YS, 21 Oct)
 
 
 def _ignore_unpaired_dims(A, meta, kinds):
@@ -563,11 +564,22 @@ def _prf(tp, fp, fn):
     return dict(precision=round(p, 3), recall=round(r, 3), f1=round(2 * p * r / (p + r), 3) if p + r else 0.0)
 
 
-def _relation_sets(g, prob, kind, thr):
+def _unscored_pairs(g):
+    """Candidate pairs with an end whose true class is in UNSCORED (e.g. Dim - DimLine)."""
+    if "_unscored" not in g:
+        un = np.isin(g["y"].numpy(), [g["class_names"].index(c) for c in UNSCORED if c in g["class_names"]])
+        pi = g["pair_index"].numpy()
+        g["_unscored"] = un[pi[0]] | un[pi[1]]
+    return g["_unscored"]
+
+
+def _relation_sets(g, prob, kind, thr, unscored=False):
     """Relations as Label Studio has them (between regions, not node pieces): the true ones of this pair
-    kind, and the predicted ones (any node pair of the two regions above the threshold)."""
+    kind, and the predicted ones (any node pair of the two regions above the threshold).
+    unscored: the pairs touching an UNSCORED class instead of the scored ones."""
     ent = g["_ent"] if "_ent" in g else g.setdefault("_ent", [n.get("entity") for n in g["meta"]["nodes"]])
-    pi = g["pair_index"].numpy(); lab = g["pair_label"].numpy() > 0; m = g["pair_kind"].numpy() == kind
+    pi = g["pair_index"].numpy(); lab = g["pair_label"].numpy() > 0
+    m = (g["pair_kind"].numpy() == kind) & (_unscored_pairs(g) == unscored)
     key = lambda a, b: frozenset((ent[a] or f"n{a}", ent[b] or f"n{b}"))
     true = {key(a, b) for a, b in zip(pi[0][m & lab], pi[1][m & lab])}
     sel = m & (prob > thr)
@@ -586,11 +598,12 @@ def _avg_precision(score, label):
 @torch.no_grad()
 def evaluate(model, graphs, thresholds=None):
     """Node classes and relations against your labels. Relations are counted as in Label Studio (region to
-    region): found if any node pair of the two regions scores above the threshold of its pair kind."""
+    region): found if any node pair of the two regions scores above the threshold of its pair kind.
+    UNSCORED classes (and relations touching them) stay out of the scores and are given under "reference"."""
     classes, kinds = graphs[0]["class_names"], graphs[0]["pair_kinds"]
     thresholds = thresholds or getattr(model, "thresholds", None) or {}
     n_cls, n_k = len(classes), len(kinds)
-    ct = np.zeros((n_cls, 3)); kt = np.zeros((n_k, 3)); correct = total = 0
+    ct = np.zeros((n_cls, 3)); kt = np.zeros((n_k, 3)); rt = np.zeros((n_k, 3)); correct = total = 0
     lt = np.zeros((n_cls, 3))                             # the same, counted in line length (pt): what a takeoff measures
     scores = [[] for _ in range(n_k)]; labels = [[] for _ in range(n_k)]
     for g in graphs:
@@ -598,7 +611,8 @@ def evaluate(model, graphs, thresholds=None):
         yp, y = nprob.argmax(1).numpy(), g["y"].numpy()
         ln = np.array([n.get("length", 0.0) if n["kind"] == "line" else 0.0 for n in g["meta"]["nodes"]])
         yp, y, ln = yp[y != IGNORE], y[y != IGNORE], ln[y != IGNORE]   # ignored labels (Dim without its DimLine) not scored
-        correct += int((yp == y).sum()); total += len(y)
+        sc = ~np.isin(y, [classes.index(c) for c in UNSCORED if c in classes])
+        correct += int((yp == y)[sc].sum()); total += int(sc.sum())
         for c in range(1, n_cls):
             ct[c] += [((yp == c) & (y == c)).sum(), ((yp == c) & (y != c)).sum(), ((yp != c) & (y == c)).sum()]
             lt[c] += [ln[(yp == c) & (y == c)].sum(), ln[(yp == c) & (y != c)].sum(), ln[(yp != c) & (y == c)].sum()]
@@ -606,7 +620,10 @@ def evaluate(model, graphs, thresholds=None):
         for k in range(n_k):
             true, pred = _relation_sets(g, pp, k, thresholds.get(kinds[k], THRESHOLD))
             kt[k] += [len(true & pred), len(pred - true), len(true - pred)]
-            scores[k].append(pp[pk == k]); labels[k].append(pl[pk == k])
+            true, pred = _relation_sets(g, pp, k, thresholds.get(kinds[k], THRESHOLD), unscored=True)
+            rt[k] += [len(true & pred), len(pred - true), len(true - pred)]
+            sel = (pk == k) & ~_unscored_pairs(g)
+            scores[k].append(pp[sel]); labels[k].append(pl[sel])
     per_class = {classes[c]: dict(**_prf(*ct[c]), true=int(ct[c, 0] + ct[c, 2])) for c in range(1, n_cls) if ct[c, 0] + ct[c, 2] > 0}
     for c in range(1, n_cls):                             # line classes: also by length (tiny stubs barely count)
         if classes[c] in per_class and lt[c, 0] + lt[c, 2] > 0:
@@ -617,9 +634,13 @@ def evaluate(model, graphs, thresholds=None):
             ap = _avg_precision(np.concatenate(scores[k]), np.concatenate(labels[k]))
             per_kind[kinds[k]] = dict(**_prf(*kt[k]), true=int(kt[k, 0] + kt[k, 2]), threshold=thresholds.get(kinds[k], THRESHOLD),
                                       pair_ap=round(ap, 3) if ap is not None else None)
+    reference = {c: per_class.pop(c) for c in UNSCORED if c in per_class}
+    reference.update({f"{kinds[k]} ({'/'.join(UNSCORED)})": dict(**_prf(*rt[k]), true=int(rt[k, 0] + rt[k, 2]))
+                      for k in range(n_k) if rt[k, 0] + rt[k, 2] > 0})
     mean = lambda d, f: round(float(np.mean([v[f] for v in d.values() if v.get(f) is not None])), 3) if d else 0.0
     return dict(node_accuracy=round(correct / max(total, 1), 4), node_f1=mean(per_class, "f1"), per_class=per_class,
                 relation_f1=mean(per_kind, "f1"), relation_ap=mean(per_kind, "pair_ap"), per_kind=per_kind,
+                reference=reference,
                 pages=[g["name"] for g in graphs])
 
 
@@ -745,6 +766,10 @@ def metrics_text(m):
     lines.append(f"relations (region to region, as in Label Studio): mean F1 {m['relation_f1']:.3f}")
     for k, v in m["per_kind"].items():
         lines.append(f"   {k:<38} P {v['precision']:.2f}  R {v['recall']:.2f}  F1 {v['f1']:.2f}  ({v['true']} relations, threshold {v['threshold']})")
+    if m.get("reference"):
+        lines.append("reference only (trained on, not in the scores above):")
+        for k, v in m["reference"].items():
+            lines.append(f"   {k:<38} P {v['precision']:.2f}  R {v['recall']:.2f}  F1 {v['f1']:.2f}  ({v['true']})")
     return "\n".join(lines)
 
 
