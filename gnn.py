@@ -631,7 +631,7 @@ def fit_thresholds(model, graphs):
     out = {}
     for k, name in enumerate(kinds):
         best = (-1.0, THRESHOLD)
-        for t in np.linspace(0.05, 0.95, 19):
+        for t in np.r_[np.linspace(0.05, 0.95, 19), 0.97, 0.98, 0.99, 0.995]:   # above 0.95 too: the model is often that sure
             tp = fp = fn = 0
             for g, pp in zip(graphs, probs):
                 true, pred = _relation_sets(g, pp, k, t)
@@ -640,7 +640,7 @@ def fit_thresholds(model, graphs):
                 break
             f1 = _prf(tp, fp, fn)["f1"]
             if f1 > best[0]:
-                best = (f1, round(float(t), 2))
+                best = (f1, round(float(t), 3))
         out[name] = best[1]
     return out
 
