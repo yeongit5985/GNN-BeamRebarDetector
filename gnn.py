@@ -588,20 +588,26 @@ def evaluate(model, graphs, thresholds=None):
     thresholds = thresholds or getattr(model, "thresholds", None) or {}
     n_cls, n_k = len(classes), len(kinds)
     ct = np.zeros((n_cls, 3)); kt = np.zeros((n_k, 3)); correct = total = 0
+    lt = np.zeros((n_cls, 3))                             # the same, counted in line length (pt): what a takeoff measures
     scores = [[] for _ in range(n_k)]; labels = [[] for _ in range(n_k)]
     for g in graphs:
         nprob, pprob = predict(model, g)
         yp, y = nprob.argmax(1).numpy(), g["y"].numpy()
-        yp, y = yp[y != IGNORE], y[y != IGNORE]           # ignored labels (Dim without its DimLine) not scored
+        ln = np.array([n.get("length", 0.0) if n["kind"] == "line" else 0.0 for n in g["meta"]["nodes"]])
+        yp, y, ln = yp[y != IGNORE], y[y != IGNORE], ln[y != IGNORE]   # ignored labels (Dim without its DimLine) not scored
         correct += int((yp == y).sum()); total += len(y)
         for c in range(1, n_cls):
             ct[c] += [((yp == c) & (y == c)).sum(), ((yp == c) & (y != c)).sum(), ((yp != c) & (y == c)).sum()]
+            lt[c] += [ln[(yp == c) & (y == c)].sum(), ln[(yp == c) & (y != c)].sum(), ln[(yp != c) & (y == c)].sum()]
         pp, pk, pl = pprob.numpy(), g["pair_kind"].numpy(), g["pair_label"].numpy()
         for k in range(n_k):
             true, pred = _relation_sets(g, pp, k, thresholds.get(kinds[k], THRESHOLD))
             kt[k] += [len(true & pred), len(pred - true), len(true - pred)]
             scores[k].append(pp[pk == k]); labels[k].append(pl[pk == k])
     per_class = {classes[c]: dict(**_prf(*ct[c]), true=int(ct[c, 0] + ct[c, 2])) for c in range(1, n_cls) if ct[c, 0] + ct[c, 2] > 0}
+    for c in range(1, n_cls):                             # line classes: also by length (tiny stubs barely count)
+        if classes[c] in per_class and lt[c, 0] + lt[c, 2] > 0:
+            per_class[classes[c]]["by_length"] = _prf(*lt[c])
     per_kind = {}
     for k in range(n_k):
         if kt[k, 0] + kt[k, 2] > 0:
@@ -730,6 +736,9 @@ def metrics_text(m):
              f"node classes: accuracy {m['node_accuracy']:.1%}, mean F1 {m['node_f1']:.3f}"]
     for c, v in m["per_class"].items():
         lines.append(f"   {c:<13} P {v['precision']:.2f}  R {v['recall']:.2f}  F1 {v['f1']:.2f}  ({v['true']} nodes)")
+        if "by_length" in v:
+            b = v["by_length"]
+            lines.append(f"   {'':<13} by length: P {b['precision']:.2f}  R {b['recall']:.2f}  F1 {b['f1']:.2f}")
     lines.append(f"relations (region to region, as in Label Studio): mean F1 {m['relation_f1']:.3f}")
     for k, v in m["per_kind"].items():
         lines.append(f"   {k:<38} P {v['precision']:.2f}  R {v['recall']:.2f}  F1 {v['f1']:.2f}  ({v['true']} relations, threshold {v['threshold']})")

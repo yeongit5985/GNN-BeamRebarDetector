@@ -63,32 +63,54 @@ BEAM_RADIUS    = 150   # beam membership: title-like text <-> rebar-like text pa
 VIEW_GAP       = 1.0   # line work closer than this = same view (elevation / section) for the scale check
 
 
-USE_RULE_HINT = True    # give the model the rule-based detector's same-bars links as a hint (needs beam_detector.py)
+USE_RULE_HINT = True    # give the model the rule-based detector's links as a hint (needs beam_detector.py):
+                        # same bars, and link label -> the closed links of its section
 
 
 def _inside(c, bb, pad=0.0):
     return bb[0] - pad <= c[0] <= bb[2] + pad and bb[1] - pad <= c[1] <= bb[3] + pad
 
 
-def rule_same_bars(pdf_path, page_no):
-    """The detector's same-bars links on this page, as (label box, label box) pairs in PDF points."""
+def rule_hints(pdf_path, page_no):
+    """The detector's own links on this page, in PDF points:
+    same  - same-bars links, as (label box, label box) pairs
+    links - link label -> its section's closed links, as (label box, [loop polylines]); the detector picks
+            the section whose cut lies in the label's link zone (an elevation label) or that the label sits in."""
+    out = dict(same=[], links=[])
     if not USE_RULE_HINT:
-        return []
+        return out
     try:
         import beam_detector as bd
         det = bd.detect(str(pdf_path), page_no, verbose=False)
     except Exception as ex:                  # no detector here, or it failed on this page: no hint
         builtins.print(f"rule hint skipped ({type(ex).__name__}: {ex})")
-        return []
+        return out
     D = det.get("dets", []) if isinstance(det, dict) else det
     by_id = {d.get("id"): d for d in D}
-    out = []
     for d in D:
+        if d.get("bbox") is None:
+            continue
         for key in ("same_as", "repeat_of"):
             e = by_id.get(d.get(key))
-            if e is not None and d.get("bbox") is not None and e.get("bbox") is not None:
-                out.append((tuple(d["bbox"]), tuple(e["bbox"])))
+            if e is not None and e.get("bbox") is not None:
+                out["same"].append((tuple(d["bbox"]), tuple(e["bbox"])))
+        loops = [L for s in d.get("sections") or [] for L in (by_id.get(s) or {}).get("link_loops") or []]
+        if loops:
+            out["links"].append((tuple(d["bbox"]), loops))
     return out
+
+
+def _on_loops(segs, loops, tol):
+    """Every point of a line node's segments lies within tol of one of the loop polylines."""
+    P = np.asarray(segs, float).reshape(-1, 2)
+    best = np.full(len(P), np.inf)
+    for L in loops:
+        L = np.asarray(L, float)
+        for a, b in zip(L[:-1], L[1:]):
+            ab = b - a
+            t = np.clip((P - a) @ ab / max(float(ab @ ab), 1e-9), 0, 1)
+            best = np.minimum(best, np.hypot(*(a + t[:, None] * ab - P).T))
+    return bool((best <= tol).all())
 
 
 def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbose=False):
@@ -829,11 +851,20 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
                 size_cand.add((min(i, k), max(i, k)))
     same_cand |= size_cand
     cand |= size_cand
-    # pair hint: the rule-based detector's own same-bars links (beam_detector.py: section label -> the bar at
-    # the cut, a repeat -> the counted copy). The detector reads the page itself, so the hint is there for new
-    # pages too; the model learns when to trust it. No detector (or it fails): no hint.
+    # pair hint: the rule-based detector's own links (beam_detector.py): same bars (section label -> the bar
+    # at the cut, a repeat -> the counted copy) and link shape (link label -> the closed links drawn in its
+    # section; for an elevation label, the section cut inside its link zone). The detector reads the page
+    # itself, so the hint is there for new pages too; the model learns when to trust it. No detector (or it
+    # fails): no hint.
     hint = {}
-    for ba, bb_ in rule_same_bars(pdf_path, page_no):
+    rules = rule_hints(pdf_path, page_no)
+    link_hinted = 0
+    for lb, loops in rules["links"]:
+        for a, j in link_cand:
+            if _inside(nodes[a]["c"], lb, 0.3 * UNIT) and _on_loops(nodes[j]["segs"], loops, 0.4 * UNIT):
+                hint[(a, j)] = 1.0
+                link_hinted += 1
+    for ba, bb_ in rules["same"]:
         na = [i for i in rebar_set if _inside(nodes[i]["c"], ba, 0.3 * UNIT)]
         nb = [k for k in rebar_set if _inside(nodes[k]["c"], bb_, 0.3 * UNIT)]
         for i in na:
@@ -843,7 +874,8 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
                     if (min(i, k), max(i, k)) not in same_cand:      # the rule links texts the candidates missed
                         same_cand.add((min(i, k), max(i, k))); cand.add((min(i, k), max(i, k)))
     print(f"sections: {len(titles)} titles, {len(sec_label_of)} section labels, "
-          f"{sum(len(v) for v in at_cut.values())} labels at cuts, {len(size_cand)} same-size pairs, {len(hint)} hinted")
+          f"{sum(len(v) for v in at_cut.values())} labels at cuts, {len(size_cand)} same-size pairs, {len(hint) - link_hinted} same-bars hinted, "
+          f"{link_hinted} link-shape pairs hinted ({len(rules['links'])} link labels -> section)")
 
     EDGE_TYPES = ["touch", "near", "text_knn", "section"]
     keys = list(E)
