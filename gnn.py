@@ -573,6 +573,32 @@ def _unscored_pairs(g):
     return g["_unscored"]
 
 
+def best_line_per_label(g, prob):
+    """Pair probabilities with each label's text-line links cut to its single best line region: every label
+    points to one bar (YS's annotations: 254 of 254 on the test pages; TSSC totals stay unlinked, 21 Oct).
+    Line pieces are grouped by your region where the page has one, else each piece stands alone."""
+    kinds = g["pair_kinds"]
+    if "text-line" not in kinds:
+        return prob
+    nodes = g["meta"]["nodes"]
+    ent = g["_ent"] if "_ent" in g else g.setdefault("_ent", [n.get("entity") for n in nodes])
+    reg = lambda i: ent[i] or f"n{i}"
+    pi = g["pair_index"].numpy(); sel = np.where(g["pair_kind"].numpy() == kinds.index("text-line"))[0]
+    text = lambda q: pi[0][q] if nodes[pi[0][q]]["kind"] == "text" else pi[1][q]
+    line = lambda q: pi[1][q] if nodes[pi[0][q]]["kind"] == "text" else pi[0][q]
+    best = {}
+    for q in sel:
+        t, l = reg(text(q)), reg(line(q))
+        if t != l and prob[q] > best.get(t, (-1.0, None))[0]:
+            best[t] = (float(prob[q]), l)
+    out = prob.copy()
+    for q in sel:
+        t = reg(text(q))
+        if t in best and reg(line(q)) != best[t][1]:
+            out[q] = 0.0
+    return out
+
+
 def _relation_sets(g, prob, kind, thr, unscored=False):
     """Relations as Label Studio has them (between regions, not node pieces): the true ones of this pair
     kind, and the predicted ones (any node pair of the two regions above the threshold).
@@ -617,10 +643,11 @@ def evaluate(model, graphs, thresholds=None):
             ct[c] += [((yp == c) & (y == c)).sum(), ((yp == c) & (y != c)).sum(), ((yp != c) & (y == c)).sum()]
             lt[c] += [ln[(yp == c) & (y == c)].sum(), ln[(yp == c) & (y != c)].sum(), ln[(yp != c) & (y == c)].sum()]
         pp, pk, pl = pprob.numpy(), g["pair_kind"].numpy(), g["pair_label"].numpy()
+        pb = best_line_per_label(g, pp)                   # links as the model gives them; AP below ranks the raw scores
         for k in range(n_k):
-            true, pred = _relation_sets(g, pp, k, thresholds.get(kinds[k], THRESHOLD))
+            true, pred = _relation_sets(g, pb, k, thresholds.get(kinds[k], THRESHOLD))
             kt[k] += [len(true & pred), len(pred - true), len(true - pred)]
-            true, pred = _relation_sets(g, pp, k, thresholds.get(kinds[k], THRESHOLD), unscored=True)
+            true, pred = _relation_sets(g, pb, k, thresholds.get(kinds[k], THRESHOLD), unscored=True)
             rt[k] += [len(true & pred), len(pred - true), len(true - pred)]
             sel = (pk == k) & ~_unscored_pairs(g)
             scores[k].append(pp[sel]); labels[k].append(pl[sel])
@@ -648,7 +675,7 @@ def evaluate(model, graphs, thresholds=None):
 def fit_thresholds(model, graphs):
     """Per pair kind, the threshold that finds the relations of these pages best (F1)."""
     kinds = graphs[0]["pair_kinds"]
-    probs = [predict(model, g)[1].numpy() for g in graphs]
+    probs = [best_line_per_label(g, predict(model, g)[1].numpy()) for g in graphs]
     out = {}
     for k, name in enumerate(kinds):
         best = (-1.0, THRESHOLD)
@@ -833,7 +860,7 @@ def prediction_task(model, g, task, page_w, page_h, img_w=4967, img_h=3509):
         result += new
         for i in idx:
             rid[i] = [r["id"] for r in new]
-    pi, pk, pp = g["pair_index"].numpy(), g["pair_kind"].numpy(), pprob.numpy()
+    pi, pk, pp = g["pair_index"].numpy(), g["pair_kind"].numpy(), best_line_per_label(g, pprob.numpy())
     seen = set()
     for a, b, k, p in zip(pi[0], pi[1], pk, pp):
         if p <= thr.get(kinds[k], THRESHOLD) or a not in rid or b not in rid:
