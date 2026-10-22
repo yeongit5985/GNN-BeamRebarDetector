@@ -113,9 +113,10 @@ def _on_loops(segs, loops, tol):
     return bool((best <= tol).all())
 
 
-def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbose=False):
+def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbose=False, unlabelled=False):
     """One annotated Label Studio task + its PDF page -> dict(arrays=..., meta=..., stats=...).
-    arrays/meta are what the notebook saves as .npz/.json; page_no is 0-based."""
+    arrays/meta are what the notebook saves as .npz/.json; page_no is 0-based.
+    unlabelled=True: a new page with no annotation (inference): every node and pair gets no label."""
     print = builtins.print if verbose else (lambda *a, **k: None)
     PDF_PATH, PAGE_NO, IMG_CLIP, OCR_FALLBACK = Path(pdf_path), int(page_no), img_clip, ocr_fallback
     doc = pymupdf.open(PDF_PATH)
@@ -319,6 +320,8 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
         raise ValueError(f"task {task.get('id')} is not a beam drawing (ticked in a review page, or skipped in Label Studio): "
                          "no graph for it - pick another page")
     anns = [a for a in task.get("annotations", []) if not a.get("was_cancelled")]
+    if not anns and unlabelled:
+        anns = [dict(result=[])]
     if not anns:
         raise ValueError(f"task {task.get('id')} has no annotation: submit it in Label Studio, or save it from the review page")
     result = json.loads(json.dumps(anns[-1]["result"]))   # latest annotation of this task (a copy: fixed below)
@@ -373,7 +376,7 @@ def build_graph(pdf_path, page_no, task, img_clip=None, ocr_fallback=True, verbo
     print(f"task {task.get('id')}: {task.get('data', {}).get('image', '')}  ({len(result)} result items)")
 
     # image pixels -> PDF points
-    first = next(r for r in result if "original_width" in r)
+    first = next((r for r in result if "original_width" in r), dict(original_width=W_fill, original_height=H_fill))
     IMG_W, IMG_H = first["original_width"], first["original_height"]
     cx0, cy0, cx1, cy1 = IMG_CLIP or (0, 0, PAGE_W, PAGE_H)
     SX, SY = (cx1 - cx0) / IMG_W, (cy1 - cy0) / IMG_H
