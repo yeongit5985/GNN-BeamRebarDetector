@@ -822,9 +822,11 @@ def _paths(segs, tol=0.05):
 def prediction_task(model, g, task, page_w, page_h, img_w=4967, img_h=3509):
     """What the model reads on a page, as a Label Studio task the review page opens: a region for each item it
     labels (nodes of one of your regions with the same class are joined) and the links above its thresholds.
-    A region whose class differs from your label says so in its note ('AI: RebarSize · yours: BeamSize')."""
+    A region whose class differs from your label says so in its note ('AI: RebarSize · yours: BeamSize').
+    A new page with no labels (graph_builder unlabelled=True) gets no such notes."""
     nprob, pprob = predict(model, g)
     yp, y = nprob.argmax(1).numpy(), g["y"].numpy()
+    labelled = bool((y > 0).any())
     classes, kinds = g["class_names"], g["pair_kinds"]
     thr = getattr(model, "thresholds", None) or {}
     nodes = g["meta"]["nodes"]
@@ -838,7 +840,7 @@ def prediction_task(model, g, task, page_w, page_h, img_w=4967, img_h=3509):
     for k, ((key, c), idx) in enumerate(groups.items()):
         lab = LS_LABEL.get(classes[c], classes[c])
         mine = {classes[y[i]] for i in idx if y[i] > 0}
-        note = [] if mine == {classes[c]} else [f"AI: {lab} · yours: {', '.join(LS_LABEL.get(m, m) for m in sorted(mine)) or 'nothing'}"]
+        note = [] if not labelled or mine == {classes[c]} else [f"AI: {lab} · yours: {', '.join(LS_LABEL.get(m, m) for m in sorted(mine)) or 'nothing'}"]
         prob = float(nprob[idx, c].mean())
         new = []
         segs = [s for i in idx for s in nodes[i].get("segs", [])]
@@ -870,6 +872,6 @@ def prediction_task(model, g, task, page_w, page_h, img_w=4967, img_h=3509):
                 if fa != tb and (fa, tb) not in seen and (tb, fa) not in seen:
                     seen.add((fa, tb))
                     result.append(dict(from_id=fa, to_id=tb, type="relation", direction="right"))
-    meta = dict(task.get("meta") or {}, edited_in="AI test (model's own answer)")
+    meta = dict(task.get("meta") or {}, edited_in="AI test (model's own answer)" if labelled else "AI answer (new page)")
     return dict(id=task.get("id"), data=task.get("data"), meta=meta, predictions=[],
                 annotations=[dict(id=1, result=result, was_cancelled=False, ground_truth=False)])
