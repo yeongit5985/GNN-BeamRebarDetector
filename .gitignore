@@ -14,3 +14,4 @@ secrets.py
 *.html
 *.pdf
 *.png
+graphify-out/
