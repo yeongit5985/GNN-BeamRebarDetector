@@ -18,8 +18,10 @@ Plain PyTorch, no PyTorch Geometric:  pip install torch
 
     import gnn
     graphs = gnn.load_graphs("graphs")
-    train, val = gnn.split(graphs)
-    model, history, metrics = gnn.train(train, val, epochs=150)
+    train, test = gnn.split(graphs)
+    cv = gnn.cross_validate(train, folds=4)                  # chooses the epochs and thresholds
+    model, history, _ = gnn.train(train, epochs=200, stop_at=cv["epochs"], thresholds=cv["thresholds"])
+    metrics = gnn.evaluate(model, test)
     print(gnn.metrics_text(metrics))
     gnn.save_model(model, "model/beam_gnn.pt", metrics=metrics, trained_on=[g["name"] for g in train])
 """
@@ -674,8 +676,12 @@ def evaluate(model, graphs, thresholds=None):
 @torch.no_grad()
 def fit_thresholds(model, graphs):
     """Per pair kind, the threshold that finds the relations of these pages best (F1)."""
+    return _thresholds_from(graphs, [best_line_per_label(g, predict(model, g)[1].numpy()) for g in graphs])
+
+
+def _thresholds_from(graphs, probs):
+    """fit_thresholds from pair scores already worked out (one array per page, as best_line_per_label gives)."""
     kinds = graphs[0]["pair_kinds"]
-    probs = [best_line_per_label(g, predict(model, g)[1].numpy()) for g in graphs]
     out = {}
     for k, name in enumerate(kinds):
         best = (-1.0, THRESHOLD)
@@ -695,9 +701,12 @@ def fit_thresholds(model, graphs):
 
 def train(train_graphs, val_graphs=None, epochs=150, lr=3e-3, hidden=64, layers=3, dropout=0.1, seed=0,
           eval_every=10, progress=None, should_stop=None, verbose=True, device=None, read_text=True, use_patterns=False,
-          augment_pages=False):
+          augment_pages=False, stop_at=None, thresholds=None):
     """Train on train_graphs; keep the model that scores best on val_graphs (or on the training pages when
     there are none). progress(dict) is called after every epoch; should_stop() can end training early.
+    stop_at: end after this epoch and keep that model (the epoch cross_validate() chose); the learning-rate
+    schedule still runs over `epochs`, as it did in the cross-validation runs.
+    thresholds: use these (from cross_validate()) instead of fitting them on the training pages.
     augment_pages: every step trains on a changed copy of the page (augment(); text swaps only without
     use_patterns, whose hand-made features would no longer match the words).
     Returns (model, history, metrics of the kept model)."""
@@ -747,13 +756,63 @@ def train(train_graphs, val_graphs=None, epochs=150, lr=3e-3, hidden=64, layers=
             progress(row)
         if should_stop and should_stop():
             break
+        if stop_at and epoch >= stop_at:
+            best_state, best_epoch = None, epoch               # keep this epoch's model
+            break
     if best_state is not None:
         model.load_state_dict(best_state)
-    model.thresholds = fit_thresholds(model, train_graphs)        # chosen on the training pages only
+    # given ones come from pages held out in cross-validation; else chosen on the training pages only
+    model.thresholds = dict(thresholds) if thresholds else fit_thresholds(model, train_graphs)
     best_metrics = evaluate(model, check, model.thresholds)
     best_metrics["epoch"] = best_epoch
     best_metrics["checked_on"] = "validation pages" if val_graphs else "training pages (no validation page yet)"
     return model, history, best_metrics
+
+
+def cross_validate(graphs, folds=4, group=None, epochs=200, patience=5, eval_every=10, seed=0, verbose=True, **train_kw):
+    """k-fold cross-validation on the training pages, so the test pages are never used to make choices.
+    The pages are split into `folds` groups (whole drawings: group(g) gives a page's drawing, so revisions
+    of one drawing stay together). Each group is held out once: the model trains on the others and stops
+    early when the held-out group's score ((node F1 + relation AP) / 2) has not improved for `patience` checks.
+    Gives the epoch to train the final model for (the middle of the folds' best epochs) and the thresholds
+    that find the relations of the held-out pages best, i.e. both chosen on pages the model had not seen.
+    Returns dict(epochs, thresholds, folds=[per fold: pages, epoch, node_f1, relation_ap, relation_f1, history])."""
+    group = group or (lambda g: g["name"])
+    drawings = defaultdict(list)
+    for g in graphs:
+        drawings[group(g)].append(g)
+    if len(drawings) < folds:
+        raise ValueError(f"{len(drawings)} drawings: too few for {folds} folds")
+    keys = list(drawings)
+    random.Random(seed).shuffle(keys)
+    keys.sort(key=lambda d: -len(drawings[d]))                  # biggest drawings first, each to the smallest fold
+    parts = [[] for _ in range(folds)]
+    for d in keys:
+        min(parts, key=len).extend(drawings[d])
+    out, held, held_probs = [], [], []
+    for f, val in enumerate(parts):
+        train_f = [g for p in parts if p is not val for g in p]
+        if verbose:
+            print(f"--- fold {f + 1} of {folds}: held out {', '.join(g['name'] for g in val)}")
+        state = {"best": -1.0, "bad": 0}
+
+        def watch(row, state=state):
+            if "node_f1" in row:
+                score = (row["node_f1"] + row["relation_ap"]) / 2
+                state["best"], state["bad"] = (score, 0) if score > state["best"] else (state["best"], state["bad"] + 1)
+        model, history, m = train(train_f, val, epochs=epochs, eval_every=eval_every, seed=seed, verbose=verbose,
+                                  progress=watch, should_stop=lambda state=state: state["bad"] >= patience, **train_kw)
+        held += val
+        held_probs += [best_line_per_label(g, predict(model, g)[1].numpy()) for g in val]
+        out.append(dict(pages=[g["name"] for g in val], epoch=m["epoch"], node_f1=m["node_f1"],
+                        relation_ap=m["relation_ap"], relation_f1=m["relation_f1"], history=history))
+    best_epochs = sorted(f["epoch"] for f in out)
+    chosen = int(np.median(best_epochs) // eval_every * eval_every) or eval_every   # on a checked epoch
+    thresholds = _thresholds_from(held, held_probs)
+    if verbose:
+        print(f"best epoch per fold {best_epochs} -> train the final model for {chosen} epochs")
+        print("thresholds from the held-out pages:", thresholds)
+    return dict(epochs=chosen, thresholds=thresholds, folds=out)
 
 
 # ------------------------------------------------------------------------------------------- save / show
